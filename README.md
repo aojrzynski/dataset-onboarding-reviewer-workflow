@@ -33,6 +33,12 @@ A workflow graph makes the review process explicit:
 
 LangGraph is used for orchestration. Dataset loading, profiling, context loading, gap assessment, report building, and output writing live outside graph construction in testable modules.
 
+## Why not just ask an LLM?
+
+An LLM is not a safe source of truth for dataset onboarding. It should not decide whether a dataset is trusted, governed, compliant, production-ready, complete, or suitable for downstream use. It should not receive raw rows, and generated text should not bypass deterministic validation.
+
+This project currently does not use an LLM. Any future LLM role should be optional, bounded, based only on safe deterministic evidence, validated deterministically, and used only to support human review.
+
 ## Safety and product boundaries
 
 The workflow must not:
