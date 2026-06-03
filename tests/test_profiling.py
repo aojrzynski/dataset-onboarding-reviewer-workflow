@@ -25,8 +25,8 @@ def loaded_dataset() -> LoadedDataset:
             "file_name": "customer_onboarding_sample.csv",
             "file_extension": ".csv",
             "file_size_bytes": 123,
-            "row_count": 4,
-            "column_count": 5,
+            "row_count": len(dataframe),
+            "column_count": len(dataframe.columns),
             "column_names": list(dataframe.columns),
         },
     )
@@ -40,7 +40,7 @@ def test_build_safe_dataset_profile_counts_rows_columns_and_column_profiles() ->
     profile = build_safe_dataset_profile(loaded_dataset())
 
     assert profile["row_count"] == 4
-    assert profile["column_count"] == 5
+    assert profile["column_count"] == 6
     assert len(profile["columns"]) == 6
     assert profile["dataset_metadata"]["file_name"] == "customer_onboarding_sample.csv"
 
