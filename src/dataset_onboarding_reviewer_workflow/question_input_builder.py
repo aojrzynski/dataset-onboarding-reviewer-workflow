@@ -1,9 +1,17 @@
-"""Build bounded, safe evidence for optional reviewer-question generation."""
+"""Build the safe handoff payload for optional reviewer-question generation.
+
+This module does not call an LLM. It assembles a bounded payload from existing
+safe artifacts only, excluding raw rows, samples, value lists, and the full
+Markdown report. Boundary flags remain in the payload so prompt construction
+and tests can inspect the intended contract.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
+# These flags document the payload contract for the optional LLM boundary; they
+# are evidence about construction, not a claim that review is complete.
 BOUNDARIES = {
     "no_raw_rows_included": True,
     "no_sampled_records_included": True,
@@ -53,6 +61,8 @@ def build_question_generation_input(
     raw rows, sampled values, value lists, and report text cannot be forwarded.
     """
 
+    # Only allow-listed summaries are copied across this handoff. The full
+    # Markdown report and any raw dataframe content stay outside the payload.
     metadata = dataset_profile.get("dataset_metadata", {})
     if not isinstance(metadata, dict):
         metadata = {}

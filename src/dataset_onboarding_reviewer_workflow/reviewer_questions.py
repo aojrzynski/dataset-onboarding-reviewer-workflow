@@ -1,4 +1,9 @@
-"""Validate and partition optional reviewer-question candidates."""
+"""Deterministic validation gate for reviewer-question candidates.
+
+LLM output is support material until this module accepts or rejects it against
+schema, reference, and safety rules. Accepted questions remain candidates only;
+rejected candidates are useful boundary evidence for reviewers and tests.
+"""
 
 from __future__ import annotations
 
@@ -38,7 +43,11 @@ RAW_DATA_REQUEST_RE = re.compile(
 
 
 def empty_question_result(mode: str, reason: str | None = None) -> dict[str, Any]:
-    """Return a stable empty reviewer-question artifact payload."""
+    """Return a stable empty reviewer-question artifact payload.
+
+    Empty modes preserve the artifact contract when generation is not requested
+    or no candidates can be accepted.
+    """
 
     result: dict[str, Any] = {
         "question_schema_version": QUESTION_SCHEMA_VERSION,
@@ -79,6 +88,7 @@ def _as_string_list(value: Any) -> list[str] | None:
 
 
 def _allowed_sets(safe_input: dict[str, Any]) -> tuple[set[str], set[str], set[str]]:
+    """Collect safe reference IDs that candidates are allowed to cite."""
     metadata = safe_input.get("dataset_metadata_summary", {})
     context = safe_input.get("context_summary", {})
     gap_summary = safe_input.get("gap_summary", {})
@@ -109,6 +119,8 @@ def _validate_one(candidate: Any, safe_input: dict[str, Any]) -> tuple[dict[str,
             reasons.append("Question must end with a question mark.")
         if not 20 <= len(question_text) <= 240:
             reasons.append("Question length must be between 20 and 240 characters.")
+        # Question text cannot turn support material into approval, compliance,
+        # production-readiness, or raw-data-request workflows.
         if VERDICT_RE.search(question_text):
             reasons.append("Question must not ask for approval, trust, compliance, legal, or production-readiness verdicts.")
         if RAW_DATA_REQUEST_RE.search(question_text):
@@ -135,6 +147,8 @@ def _validate_one(candidate: Any, safe_input: dict[str, Any]) -> tuple[dict[str,
         reasons.append("related_dataset_fields must be a list of strings.")
         related_dataset_fields = []
 
+    # Related references must point back to safe known gaps, context fields, or
+    # dataset field names from the bounded input payload.
     allowed_gap_ids, allowed_context_fields, allowed_dataset_fields = _allowed_sets(safe_input)
     unknown_gap_ids = [gap_id for gap_id in related_gap_ids if gap_id not in allowed_gap_ids]
     if unknown_gap_ids:
@@ -162,7 +176,12 @@ def _validate_one(candidate: Any, safe_input: dict[str, Any]) -> tuple[dict[str,
 def validate_question_candidates(
     candidates: Any, safe_input: dict[str, Any], max_questions: int
 ) -> dict[str, Any]:
-    """Validate LLM candidates and partition accepted and rejected questions."""
+    """Validate LLM candidates and partition accepted and rejected questions.
+
+    Accepted questions are still reviewer-question candidates, not authoritative
+    findings. Rejected entries preserve why the validation boundary stopped a
+    candidate from entering the accepted list.
+    """
 
     candidate_items, root_errors = _candidate_list(candidates)
     accepted: list[dict[str, Any]] = []

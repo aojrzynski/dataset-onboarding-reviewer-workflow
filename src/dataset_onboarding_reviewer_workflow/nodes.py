@@ -1,4 +1,9 @@
-"""Deterministic graph nodes for dataset intake, context, and gap assessment."""
+"""Small LangGraph nodes that orchestrate the workflow stages.
+
+Nodes adapt ordinary business functions to shared state. They accumulate safe
+metadata, profile, context, gap, question, answer, and report data, but they do
+not write files directly or make review decisions.
+"""
 
 from __future__ import annotations
 
@@ -42,7 +47,12 @@ def utc_now_iso() -> str:
 
 
 def _copy_state_with_step(state: WorkflowState, step_name: str) -> WorkflowState:
-    """Copy state and append one workflow step without mutating the caller's dict."""
+    """Copy state for the next node and append a traceable stage name.
+
+    Keeping node updates copy-oriented makes handoffs explicit for tests and
+    avoids accidental mutation of prior state snapshots. The dataframe remains
+    internal state; only safe summaries are copied into artifact-bound fields.
+    """
 
     next_state = state.copy()
     next_state["workflow_steps"] = [*state["workflow_steps"], step_name]
@@ -69,7 +79,11 @@ def start_workflow_run(state: WorkflowState) -> WorkflowState:
 
 
 def load_dataset_node(state: WorkflowState) -> WorkflowState:
-    """Load a local dataset and store only safe metadata in public state fields."""
+    """Load the local dataset and keep raw rows inside internal state.
+
+    Metadata can move forward because it is file, shape, and column evidence;
+    the dataframe is kept only for the later aggregate profiling stage.
+    """
 
     next_state = _copy_state_with_step(state, "load_dataset")
     loaded_dataset = load_dataset(state["dataset_path"], sheet=state["sheet"])
@@ -80,7 +94,11 @@ def load_dataset_node(state: WorkflowState) -> WorkflowState:
 
 
 def profile_dataset_node(state: WorkflowState) -> WorkflowState:
-    """Build a safe aggregate profile from the internally loaded dataframe."""
+    """Build safe aggregate profiling evidence from the internal dataframe.
+
+    This is the handoff where raw data is reduced to counts, percentages, role
+    hints, and observations that can be written to artifacts.
+    """
 
     next_state = _copy_state_with_step(state, "profile_dataset")
     loaded_dataset = state["loaded_dataset"]
@@ -94,7 +112,11 @@ def profile_dataset_node(state: WorkflowState) -> WorkflowState:
 
 
 def load_context_node(state: WorkflowState) -> WorkflowState:
-    """Load optional human-authored onboarding context and summarize it safely."""
+    """Load optional human-authored context and align it to profiled columns.
+
+    Context is reviewer-provided input. It can guide follow-up, but it does not
+    approve the dataset and may be incomplete or incorrect.
+    """
 
     next_state = _copy_state_with_step(state, "load_context")
     context = load_onboarding_context(state["context_path"])
@@ -107,7 +129,11 @@ def load_context_node(state: WorkflowState) -> WorkflowState:
 
 
 def assess_gaps_node(state: WorkflowState) -> WorkflowState:
-    """Assess deterministic onboarding context gaps from the safe profile."""
+    """Assess deterministic, non-authoritative context gaps.
+
+    Gap records are review prompts and triage labels. They do not decide
+    readiness, close issues, or replace human review.
+    """
 
     next_state = _copy_state_with_step(state, "assess_gaps")
     gap_assessment = assess_onboarding_gaps(
@@ -125,7 +151,12 @@ def assess_gaps_node(state: WorkflowState) -> WorkflowState:
 
 
 def generate_reviewer_questions_node(state: WorkflowState) -> WorkflowState:
-    """Optionally generate and deterministically validate reviewer questions."""
+    """Prepare safe question input, optionally call an LLM, then validate output.
+
+    This node always records the bounded evidence payload. The LLM path is
+    explicit and support-only, and candidates are not stored as accepted unless
+    deterministic validation passes.
+    """
 
     next_state = _copy_state_with_step(state, "generate_reviewer_questions")
     safe_input = build_question_generation_input(
@@ -138,6 +169,8 @@ def generate_reviewer_questions_node(state: WorkflowState) -> WorkflowState:
         Path(state["output_dir"]) / REVIEWER_QUESTIONS_FILENAME
     )
 
+    # Deterministic runs stop here: no provider import, API key, prompt, or
+    # network call is needed unless the user requested question generation.
     if not state["generate_questions"]:
         next_state["reviewer_questions"] = empty_question_result(mode="not_requested")
         next_state["questions_generated"] = False
@@ -150,6 +183,8 @@ def generate_reviewer_questions_node(state: WorkflowState) -> WorkflowState:
         max_question_candidates=state["max_question_candidates"],
     )
     candidates = generate_question_candidates(config, safe_input)
+    # LLM output is raw candidate material until the deterministic validator
+    # checks schema, references, verdict language, and raw-data requests.
     next_state["reviewer_questions"] = validate_question_candidates(
         candidates, safe_input, state["max_question_candidates"]
     )
@@ -159,7 +194,11 @@ def generate_reviewer_questions_node(state: WorkflowState) -> WorkflowState:
 
 
 def load_reviewer_answers_node(state: WorkflowState) -> WorkflowState:
-    """Load optional human-authored reviewer answers and summarize them."""
+    """Load reviewer answers after questions so IDs can be matched.
+
+    Answers are human-authored review material. Matching them to accepted
+    question IDs helps follow-up, but it does not close gaps or approve data.
+    """
 
     next_state = _copy_state_with_step(state, "load_reviewer_answers")
     answers = load_reviewer_answers(state.get("answers_path"))
@@ -175,7 +214,11 @@ def load_reviewer_answers_node(state: WorkflowState) -> WorkflowState:
 
 
 def build_report_node(state: WorkflowState) -> WorkflowState:
-    """Build the deterministic Markdown onboarding review report."""
+    """Build the deterministic Markdown report from accumulated safe state.
+
+    The report summarizes existing artifacts and review material. It does not
+    call an LLM, inspect raw rows, or add final decisions.
+    """
 
     next_state = _copy_state_with_step(state, "build_report")
     next_state["artifacts"]["onboarding_review_report"] = str(
@@ -196,7 +239,11 @@ def build_report_node(state: WorkflowState) -> WorkflowState:
 
 
 def complete_workflow_run(state: WorkflowState) -> WorkflowState:
-    """Complete the run without making any review decision."""
+    """Mark graph completion without making any review decision.
+
+    Artifact paths and status are ready for the CLI writers, while human review
+    remains the authority outside the automated workflow.
+    """
 
     next_state = _copy_state_with_step(state, "complete_workflow_run")
     next_state["completed_at_utc"] = utc_now_iso()

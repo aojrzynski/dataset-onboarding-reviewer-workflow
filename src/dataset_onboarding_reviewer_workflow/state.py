@@ -1,4 +1,9 @@
-"""Shared workflow state for dataset intake and profiling runs."""
+"""Typed shared state passed between LangGraph nodes.
+
+WorkflowState is an orchestration record, not an approval record. Most fields
+hold JSON-safe evidence, artifact paths, or status flags; the one dataframe
+field is explicitly internal so raw rows do not become artifacts.
+"""
 
 from __future__ import annotations
 
@@ -10,10 +15,11 @@ from dataset_onboarding_reviewer_workflow.intake import LoadedDataset
 class WorkflowState(TypedDict):
     """State passed between LangGraph nodes.
 
-    LangGraph passes this shared workflow record from node to node. Most fields
-    are safe metadata or aggregate outputs that may be written to artifacts.
-    ``loaded_dataset`` is internal orchestration state only and must never be
-    serialized to JSON artifacts because it contains the dataframe.
+    LangGraph passes this shared workflow record from node to node. The state
+    accumulates safe metadata, aggregate evidence, human-authored inputs, and
+    status flags needed by later stages. It is not a final decision record, and
+    ``loaded_dataset`` is internal-only orchestration state that must never be
+    serialized because it contains the dataframe.
     """
 
     run_id: str

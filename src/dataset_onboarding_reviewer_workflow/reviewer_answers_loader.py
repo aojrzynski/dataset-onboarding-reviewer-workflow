@@ -1,4 +1,9 @@
-"""Load and summarize human-authored reviewer answers."""
+"""Load and summarize human-authored reviewer answers.
+
+Reviewer answers are optional input from people participating in review. They
+are normalized and matched to accepted question IDs where possible, but they do
+not close gaps automatically or approve the dataset.
+"""
 
 from __future__ import annotations
 
@@ -39,12 +44,15 @@ def _as_optional_string(value: Any) -> str | None:
 
 
 def _normalize_answer_record(question_id: str, record: Any) -> tuple[dict[str, Any] | None, list[str]]:
+    """Normalize one answer record while preserving warning evidence."""
     warnings: list[str] = []
     if not isinstance(record, dict):
         return None, [f"Answer record for {question_id} must be a mapping and was ignored."]
 
     answer = str(record.get("answer", "") or "").strip()
     status = str(record.get("status") or ("answered" if answer else "unanswered")).strip()
+    # Unsupported statuses are warnings rather than automatic run failures so
+    # reviewers can correct answer files without losing other answer evidence.
     if status not in ALLOWED_ANSWER_STATUSES:
         warnings.append(
             f"Answer record for {question_id} has unsupported status {status!r}; normalized to 'unanswered'."
@@ -62,7 +70,11 @@ def _normalize_answer_record(question_id: str, record: Any) -> tuple[dict[str, A
 
 
 def load_reviewer_answers(answers_path: Path | str | None) -> dict[str, Any]:
-    """Load optional reviewer answers YAML and normalize question-keyed records."""
+    """Load optional reviewer answers YAML and normalize question-keyed records.
+
+    Unknown top-level fields and unsupported question IDs are preserved as
+    review warnings instead of being treated as approval or rejection signals.
+    """
 
     if answers_path is None:
         return _empty_answers(None, answers_provided=False)
@@ -89,6 +101,8 @@ def load_reviewer_answers(answers_path: Path | str | None) -> dict[str, Any]:
 
     unknown_fields: list[str] = []
     warnings: list[str] = []
+    # Support the explicit reviewer_answers mapping while still preserving any
+    # other top-level keys as unknown-field review evidence.
     if "reviewer_answers" in loaded:
         answer_mapping = loaded.get("reviewer_answers")
         unknown_fields = [str(key) for key in loaded if key != "reviewer_answers"]
@@ -135,7 +149,11 @@ def _accepted_question_ids(reviewer_questions: dict[str, Any]) -> list[str]:
 def summarize_reviewer_answers(
     answers: dict[str, Any], reviewer_questions: dict[str, Any]
 ) -> dict[str, Any]:
-    """Summarize reviewer answers against accepted reviewer-question ids."""
+    """Summarize answers against accepted reviewer-question candidate IDs.
+
+    Matched, unmatched, and unanswered IDs are all preserved for follow-up. The
+    summary does not use answers to close gaps or make a review decision.
+    """
 
     records = answers.get("answer_records", []) if isinstance(answers, dict) else []
     if not isinstance(records, list):
