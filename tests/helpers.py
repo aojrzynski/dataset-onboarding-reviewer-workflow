@@ -12,6 +12,8 @@ FORBIDDEN_ARTIFACT_KEYS = {
     "last_rows",
     "records",
     "dataframe",
+    "min",
+    "max",
 }
 
 

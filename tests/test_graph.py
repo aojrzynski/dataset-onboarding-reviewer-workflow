@@ -42,6 +42,9 @@ def test_run_workflow_without_context_returns_completed_state(tmp_path) -> None:
     assert state["report_built"] is True
     assert state["onboarding_review_report"]
     assert state["context_provided"] is False
+    assert state["reviewer_questions"]["mode"] == "not_requested"
+    assert state["llm_used"] is False
+    assert state["questions_generated"] is False
 
 
 def test_run_workflow_with_context_returns_completed_state(tmp_path) -> None:
@@ -82,9 +85,46 @@ def test_run_workflow_does_not_imply_later_review_fields(tmp_path) -> None:
 
     for future_field in (
         "context",
-        "reviewer_questions",
         "reviewer_answers",
         "llm_prompt",
+        "question_generation_prompt",
         "safe_onboarding_payload",
+        "final_decision",
     ):
         assert future_field not in state
+
+
+def test_run_workflow_with_generate_questions_validates_fake_candidates(tmp_path, monkeypatch) -> None:
+    csv_path = tmp_path / "customers.csv"
+    write_csv(csv_path)
+
+    def fake_generate(config, safe_input):
+        assert config.provider == "openai"
+        assert safe_input["boundaries"]["no_raw_rows_included"] is True
+        return {
+            "questions": [
+                {
+                    "question": "What grain should reviewers confirm before downstream engineering work?",
+                    "category": "grain",
+                    "priority": "high",
+                    "related_gap_ids": ["missing_expected_grain"],
+                    "related_context_fields": ["expected_grain"],
+                    "related_dataset_fields": [],
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "dataset_onboarding_reviewer_workflow.nodes.generate_question_candidates",
+        fake_generate,
+    )
+
+    state = run_workflow(csv_path, tmp_path, generate_questions=True)
+
+    assert state["questions_generated"] is True
+    assert state["llm_used"] is True
+    assert state["reviewer_questions"]["accepted_count"] == 1
+    assert state["reviewer_questions"]["accepted_questions"][0]["question_id"] == "q_001"
+    assert "reviewer_answers" not in state
+    assert "final_decision" not in state
+    assert "safe_onboarding_payload" not in state

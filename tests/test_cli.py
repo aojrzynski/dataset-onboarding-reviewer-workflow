@@ -14,7 +14,7 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_cli_help_exits_zero_and_mentions_dataset_path_output_dir_sheet_and_context() -> None:
+def test_cli_help_exits_zero_and_mentions_dataset_path_output_dir_sheet_context_and_llm_options() -> None:
     result = run_cli("--help")
 
     assert result.returncode == 0
@@ -22,6 +22,10 @@ def test_cli_help_exits_zero_and_mentions_dataset_path_output_dir_sheet_and_cont
     assert "--output-dir" in result.stdout
     assert "--sheet" in result.stdout
     assert "--context" in result.stdout
+    assert "--generate-questions" in result.stdout
+    assert "--llm-provider" in result.stdout
+    assert "--llm-model" in result.stdout
+    assert "--max-question-candidates" in result.stdout
 
 
 def test_cli_version_exits_zero_and_includes_version() -> None:
@@ -31,10 +35,11 @@ def test_cli_version_exits_zero_and_includes_version() -> None:
     assert "0.1.0" in result.stdout
 
 
-def assert_five_artifacts(output_dir) -> None:
+def assert_six_artifacts(output_dir) -> None:
     assert (output_dir / "dataset_profile.json").exists()
     assert (output_dir / "onboarding_context_summary.json").exists()
     assert (output_dir / "onboarding_gap_assessment.json").exists()
+    assert (output_dir / "reviewer_questions.json").exists()
     assert (output_dir / "onboarding_review_report.md").exists()
     assert (output_dir / "onboarding_trace.json").exists()
 
@@ -45,7 +50,7 @@ def test_cli_run_without_context_creates_all_artifacts(tmp_path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert "Dataset onboarding review artifacts completed." in result.stdout
-    assert_five_artifacts(output_dir)
+    assert_six_artifacts(output_dir)
     trace_payload = json.loads((output_dir / "onboarding_trace.json").read_text(encoding="utf-8"))
     assert trace_payload["status"] == "completed"
     assert trace_payload["dataset_loaded"] is True
@@ -54,6 +59,9 @@ def test_cli_run_without_context_creates_all_artifacts(tmp_path) -> None:
     assert trace_payload["context_provided"] is False
     assert trace_payload["gaps_assessed"] is True
     assert trace_payload["report_built"] is True
+    assert trace_payload["llm_used"] is False
+    questions_payload = json.loads((output_dir / "reviewer_questions.json").read_text(encoding="utf-8"))
+    assert questions_payload["mode"] == "not_requested"
 
 
 def test_cli_run_with_example_context_creates_all_artifacts(tmp_path) -> None:
@@ -70,7 +78,7 @@ def test_cli_run_with_example_context_creates_all_artifacts(tmp_path) -> None:
     assert "Context summary written to:" in result.stdout
     assert "Gap assessment written to:" in result.stdout
     assert "Review report written to:" in result.stdout
-    assert_five_artifacts(output_dir)
+    assert_six_artifacts(output_dir)
     report = (output_dir / "onboarding_review_report.md").read_text(encoding="utf-8")
     assert "# Dataset Onboarding Review Report" in report
     assert "## Gap summary" in report
@@ -131,3 +139,31 @@ def test_cli_unsupported_context_extension_exits_nonzero_with_clear_error(tmp_pa
     assert result.returncode == 3
     assert "Context loading failed" in result.stderr
     assert "Unsupported context extension" in result.stderr
+
+
+def test_cli_generate_questions_missing_key_exits_4(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    result = run_cli(
+        "examples/customer_onboarding_sample.csv",
+        "--generate-questions",
+        "--output-dir",
+        str(tmp_path / "out"),
+    )
+
+    assert result.returncode == 4
+    assert "LLM question generation failed" in result.stderr
+    assert "OPENAI_API_KEY" in result.stderr
+
+
+def test_cli_generate_questions_unsupported_provider_exits_4(tmp_path) -> None:
+    result = run_cli(
+        "examples/customer_onboarding_sample.csv",
+        "--generate-questions",
+        "--llm-provider",
+        "other",
+        "--output-dir",
+        str(tmp_path / "out"),
+    )
+
+    assert result.returncode == 4
+    assert "Unsupported LLM provider" in result.stderr
