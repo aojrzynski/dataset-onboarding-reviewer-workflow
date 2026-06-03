@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="dataset-onboarding-reviewer",
         description=(
             "Load a local CSV/XLSX/XLSM dataset and write safe aggregate profile, "
-            "context summary, gap assessment, optional reviewer questions, Markdown report, and trace artifacts."
+            "context summary, gap assessment, optional reviewer questions, reviewer answers summary, Markdown report, and trace artifacts."
         ),
     )
     parser.add_argument(
@@ -44,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--context",
         default=None,
         help="Optional path to human-authored onboarding context YAML.",
+    )
+    parser.add_argument(
+        "--answers",
+        default=None,
+        help="Optional path to human-authored reviewer answers YAML.",
     )
     parser.add_argument(
         "--generate-questions",
@@ -79,11 +84,13 @@ def main(argv: list[str] | None = None) -> int:
     from dataset_onboarding_reviewer_workflow.graph import run_workflow
     from dataset_onboarding_reviewer_workflow.intake import DatasetIntakeError
     from dataset_onboarding_reviewer_workflow.llm_client import LLMGenerationError
+    from dataset_onboarding_reviewer_workflow.reviewer_answers_loader import ReviewerAnswersError
     from dataset_onboarding_reviewer_workflow.output_writers import (
         write_context_summary,
         write_dataset_profile,
         write_gap_assessment,
         write_onboarding_review_report,
+        write_reviewer_answers_summary,
         write_reviewer_questions,
         write_onboarding_trace,
     )
@@ -95,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir,
             sheet=args.sheet,
             context_path=args.context,
+            answers_path=args.answers,
             generate_questions=args.generate_questions,
             llm_provider=args.llm_provider,
             llm_model=args.llm_model,
@@ -108,6 +116,10 @@ def main(argv: list[str] | None = None) -> int:
         state["artifacts"]["onboarding_gap_assessment"] = str(gap_assessment_path)
         reviewer_questions_path = write_reviewer_questions(output_dir, state["reviewer_questions"])
         state["artifacts"]["reviewer_questions"] = str(reviewer_questions_path)
+        reviewer_answers_summary_path = write_reviewer_answers_summary(
+            output_dir, state["reviewer_answers_summary"]
+        )
+        state["artifacts"]["reviewer_answers_summary"] = str(reviewer_answers_summary_path)
         review_report_path = write_onboarding_review_report(
             output_dir, state["onboarding_review_report"]
         )
@@ -122,12 +134,16 @@ def main(argv: list[str] | None = None) -> int:
     except LLMGenerationError as exc:
         print(f"LLM question generation failed: {exc}", file=sys.stderr)
         return 4
+    except ReviewerAnswersError as exc:
+        print(f"Reviewer answers loading failed: {exc}", file=sys.stderr)
+        return 5
 
     print("Dataset onboarding review artifacts completed.")
     print(f"Profile written to: {profile_path}")
     print(f"Context summary written to: {context_summary_path}")
     print(f"Gap assessment written to: {gap_assessment_path}")
     print(f"Reviewer questions written to: {reviewer_questions_path}")
+    print(f"Reviewer answers summary written to: {reviewer_answers_summary_path}")
     print(f"Review report written to: {review_report_path}")
     print(f"Trace written to: {trace_path}")
     return 0

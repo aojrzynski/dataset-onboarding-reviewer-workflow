@@ -16,6 +16,7 @@ from dataset_onboarding_reviewer_workflow.output_writers import (
     CONTEXT_SUMMARY_FILENAME,
     DATASET_PROFILE_FILENAME,
     GAP_ASSESSMENT_FILENAME,
+    REVIEWER_ANSWERS_SUMMARY_FILENAME,
     REVIEWER_QUESTIONS_FILENAME,
     REVIEW_REPORT_FILENAME,
     TRACE_FILENAME,
@@ -27,6 +28,10 @@ from dataset_onboarding_reviewer_workflow.reviewer_questions import (
     validate_question_candidates,
 )
 from dataset_onboarding_reviewer_workflow.report_builder import build_onboarding_review_report
+from dataset_onboarding_reviewer_workflow.reviewer_answers_loader import (
+    load_reviewer_answers,
+    summarize_reviewer_answers,
+)
 from dataset_onboarding_reviewer_workflow.state import WorkflowState
 
 
@@ -50,6 +55,8 @@ def _copy_state_with_step(state: WorkflowState, step_name: str) -> WorkflowState
     next_state["onboarding_review_report"] = str(state.get("onboarding_review_report", ""))
     next_state["question_generation_input"] = dict(state.get("question_generation_input", {}))
     next_state["reviewer_questions"] = dict(state.get("reviewer_questions", {}))
+    next_state["reviewer_answers"] = dict(state.get("reviewer_answers", {}))
+    next_state["reviewer_answers_summary"] = dict(state.get("reviewer_answers_summary", {}))
     return next_state
 
 
@@ -151,6 +158,22 @@ def generate_reviewer_questions_node(state: WorkflowState) -> WorkflowState:
     return next_state
 
 
+def load_reviewer_answers_node(state: WorkflowState) -> WorkflowState:
+    """Load optional human-authored reviewer answers and summarize them."""
+
+    next_state = _copy_state_with_step(state, "load_reviewer_answers")
+    answers = load_reviewer_answers(state.get("answers_path"))
+    summary = summarize_reviewer_answers(answers, state.get("reviewer_questions", {}))
+    next_state["reviewer_answers"] = answers
+    next_state["reviewer_answers_summary"] = summary
+    next_state["answers_loaded"] = True
+    next_state["answers_provided"] = bool(summary.get("answers_provided", False))
+    next_state["artifacts"]["reviewer_answers_summary"] = str(
+        Path(state["output_dir"]) / REVIEWER_ANSWERS_SUMMARY_FILENAME
+    )
+    return next_state
+
+
 def build_report_node(state: WorkflowState) -> WorkflowState:
     """Build the deterministic Markdown onboarding review report."""
 
@@ -164,6 +187,7 @@ def build_report_node(state: WorkflowState) -> WorkflowState:
         state["onboarding_context_summary"],
         state["gap_assessment"],
         state.get("reviewer_questions"),
+        state.get("reviewer_answers_summary"),
         {"artifacts": dict(next_state["artifacts"])},
     )
     next_state["onboarding_review_report"] = report

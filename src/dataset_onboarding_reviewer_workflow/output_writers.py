@@ -13,6 +13,7 @@ DATASET_PROFILE_FILENAME = "dataset_profile.json"
 CONTEXT_SUMMARY_FILENAME = "onboarding_context_summary.json"
 GAP_ASSESSMENT_FILENAME = "onboarding_gap_assessment.json"
 REVIEWER_QUESTIONS_FILENAME = "reviewer_questions.json"
+REVIEWER_ANSWERS_SUMMARY_FILENAME = "reviewer_answers_summary.json"
 REVIEW_REPORT_FILENAME = "onboarding_review_report.md"
 NO_REVIEW_DECISION_NOTE = (
     "Local onboarding artifact run only: a dataset was loaded, a safe aggregate profile "
@@ -60,6 +61,16 @@ def write_reviewer_questions(output_dir: Path | str, reviewer_questions: dict[st
     """Write the optional reviewer-question candidates artifact."""
 
     return write_json_artifact(output_dir, REVIEWER_QUESTIONS_FILENAME, reviewer_questions)
+
+
+def write_reviewer_answers_summary(
+    output_dir: Path | str, reviewer_answers_summary: dict[str, Any]
+) -> Path:
+    """Write the human-authored reviewer answers summary artifact."""
+
+    return write_json_artifact(
+        output_dir, REVIEWER_ANSWERS_SUMMARY_FILENAME, reviewer_answers_summary
+    )
 
 
 def write_markdown_artifact(output_dir: Path | str, filename: str, content: str) -> Path:
@@ -114,6 +125,20 @@ def _gap_counts(state: WorkflowState) -> dict[str, int]:
     }
 
 
+def _answer_counts(state: WorkflowState) -> dict[str, int]:
+    reviewer_answers_summary = state.get("reviewer_answers_summary", {})
+    if not isinstance(reviewer_answers_summary, dict):
+        reviewer_answers_summary = {}
+    return {
+        "answer_count": int(reviewer_answers_summary.get("answer_count", 0)),
+        "matched_answer_count": int(reviewer_answers_summary.get("matched_answer_count", 0)),
+        "unmatched_answer_count": int(reviewer_answers_summary.get("unmatched_answer_count", 0)),
+        "answered_question_count": int(reviewer_answers_summary.get("answered_question_count", 0)),
+        "unanswered_question_count": int(reviewer_answers_summary.get("unanswered_question_count", 0)),
+        "needs_follow_up_count": int(reviewer_answers_summary.get("needs_follow_up_count", 0)),
+    }
+
+
 def _question_counts(state: WorkflowState) -> dict[str, int]:
     reviewer_questions = state.get("reviewer_questions", {})
     if not isinstance(reviewer_questions, dict):
@@ -140,6 +165,10 @@ def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
         "reviewer_questions", str(Path(state["output_dir"]) / REVIEWER_QUESTIONS_FILENAME)
     )
     artifacts.setdefault(
+        "reviewer_answers_summary",
+        str(Path(state["output_dir"]) / REVIEWER_ANSWERS_SUMMARY_FILENAME),
+    )
+    artifacts.setdefault(
         "onboarding_review_report", str(Path(state["output_dir"]) / REVIEW_REPORT_FILENAME)
     )
     artifacts.setdefault("onboarding_trace", str(Path(state["output_dir"]) / TRACE_FILENAME))
@@ -159,6 +188,8 @@ def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
         "context_provided": state["context_provided"],
         "gaps_assessed": state["gaps_assessed"],
         "report_built": state.get("report_built", False),
+        "answers_loaded": state.get("answers_loaded", False),
+        "answers_provided": state.get("answers_provided", False),
         "generate_questions_requested": state.get("generate_questions", False),
         "questions_generated": state.get("questions_generated", False),
         "llm_used": state.get("llm_used", False),
@@ -167,11 +198,13 @@ def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
         "context_summary_artifact_path": artifacts["onboarding_context_summary"],
         "gap_assessment_artifact_path": artifacts["onboarding_gap_assessment"],
         "reviewer_questions_artifact_path": artifacts["reviewer_questions"],
+        "reviewer_answers_summary_artifact_path": artifacts["reviewer_answers_summary"],
         "review_report_artifact_path": artifacts["onboarding_review_report"],
         "trace_artifact_path": artifacts["onboarding_trace"],
         "context_counts": _context_counts(state),
         "gap_counts": _gap_counts(state),
         "reviewer_question_counts": _question_counts(state),
+        "reviewer_answer_counts": _answer_counts(state),
         "review_decision_made": False,
         "note": NO_REVIEW_DECISION_NOTE,
     }

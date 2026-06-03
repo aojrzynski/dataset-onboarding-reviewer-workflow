@@ -1,0 +1,13 @@
+reviewer_answers:
+  q_001:
+    status: answered
+    answer: "The expected grain is one row per customer onboarding record."
+    answered_by: "Example reviewer"
+    answered_at: "2026-06-03"
+    notes: "Synthetic example answer."
+  q_002:
+    status: needs_follow_up
+    answer: ""
+    answered_by: "Example reviewer"
+    answered_at: "2026-06-03"
+    notes: "Needs confirmation from the dataset owner."

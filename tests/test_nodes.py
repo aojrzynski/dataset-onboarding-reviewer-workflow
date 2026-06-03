@@ -5,6 +5,7 @@ from dataset_onboarding_reviewer_workflow.nodes import (
     build_report_node,
     complete_workflow_run,
     load_context_node,
+    load_reviewer_answers_node,
     load_dataset_node,
     profile_dataset_node,
     generate_reviewer_questions_node,
@@ -34,6 +35,7 @@ def base_state(
         "dataset_path": dataset_path,
         "sheet": None,
         "context_path": context_path,
+        "answers_path": None,
         "dataset_loaded": False,
         "dataset_metadata": {},
         "dataset_profile": {},
@@ -52,6 +54,10 @@ def base_state(
         "max_question_candidates": 8,
         "question_generation_input": {},
         "reviewer_questions": {},
+        "reviewer_answers": {},
+        "reviewer_answers_summary": {},
+        "answers_loaded": False,
+        "answers_provided": False,
         "questions_generated": False,
         "llm_used": False,
     }
@@ -149,12 +155,39 @@ def test_generate_reviewer_questions_node_records_not_requested_result(tmp_path)
     assert questioned["artifacts"]["reviewer_questions"].endswith("reviewer_questions.json")
 
 
+def test_load_reviewer_answers_node_summarizes_optional_answers(tmp_path) -> None:
+    csv_path = tmp_path / "customers.csv"
+    answers_path = tmp_path / "answers.yaml"
+    write_csv(csv_path)
+    answers_path.write_text("q_001:\n  answer: Example answer.\n", encoding="utf-8")
+    state = generate_reviewer_questions_node(
+        assess_gaps_node(
+            load_context_node(
+                profile_dataset_node(
+                    load_dataset_node(start_workflow_run(base_state(str(csv_path))))
+                )
+            )
+        )
+    )
+    state["answers_path"] = str(answers_path)
+
+    answered = load_reviewer_answers_node(state)
+
+    assert answered["workflow_steps"][-1] == "load_reviewer_answers"
+    assert answered["answers_loaded"] is True
+    assert answered["answers_provided"] is True
+    assert answered["reviewer_answers_summary"]["answer_count"] == 1
+    assert answered["artifacts"]["reviewer_answers_summary"].endswith("reviewer_answers_summary.json")
+
+
 def test_build_report_node_builds_report_and_records_artifact(tmp_path) -> None:
     csv_path = tmp_path / "customers.csv"
     write_csv(csv_path)
-    state = generate_reviewer_questions_node(
-        assess_gaps_node(
-            load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+    state = load_reviewer_answers_node(
+        generate_reviewer_questions_node(
+            assess_gaps_node(
+                load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+            )
         )
     )
 
@@ -170,9 +203,11 @@ def test_complete_workflow_run_sets_completion_and_status(tmp_path) -> None:
     csv_path = tmp_path / "customers.csv"
     write_csv(csv_path)
     state = build_report_node(
-        generate_reviewer_questions_node(
-            assess_gaps_node(
-                load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+        load_reviewer_answers_node(
+            generate_reviewer_questions_node(
+                assess_gaps_node(
+                    load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+                )
             )
         )
     )
@@ -186,6 +221,7 @@ def test_complete_workflow_run_sets_completion_and_status(tmp_path) -> None:
         "load_context",
         "assess_gaps",
         "generate_reviewer_questions",
+        "load_reviewer_answers",
         "build_report",
         "complete_workflow_run",
     ]

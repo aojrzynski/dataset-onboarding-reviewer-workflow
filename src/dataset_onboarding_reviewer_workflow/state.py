@@ -28,6 +28,7 @@ class WorkflowState(TypedDict):
     dataset_path: str
     sheet: str | None
     context_path: str | None
+    answers_path: str | None
     dataset_loaded: bool
     dataset_metadata: dict[str, Any]
     dataset_profile: dict[str, Any]
@@ -46,6 +47,10 @@ class WorkflowState(TypedDict):
     max_question_candidates: int
     question_generation_input: dict[str, Any]
     reviewer_questions: dict[str, Any]
+    reviewer_answers: dict[str, Any]
+    reviewer_answers_summary: dict[str, Any]
+    answers_loaded: bool
+    answers_provided: bool
     questions_generated: bool
     llm_used: bool
     loaded_dataset: NotRequired[LoadedDataset]

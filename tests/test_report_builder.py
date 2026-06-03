@@ -32,6 +32,7 @@ def test_report_includes_expected_sections(tmp_path) -> None:
         "## Gap summary",
         "## Gaps for review",
         "## Reviewer questions",
+        "## Reviewer answers",
         "## Suggested next steps",
         "## Artifact index",
         "## Limitations",
@@ -63,6 +64,7 @@ def test_report_includes_context_gap_next_steps_and_artifacts(tmp_path) -> None:
     assert "onboarding_context_summary.json" in report
     assert "onboarding_gap_assessment.json" in report
     assert "reviewer_questions.json" in report
+    assert "reviewer_answers_summary.json" in report
     assert "onboarding_review_report.md" in report
     assert "onboarding_trace.json" in report
 
@@ -110,6 +112,7 @@ def test_report_says_questions_not_requested_by_default(tmp_path) -> None:
 
     assert "Reviewer question generation was not requested" in report
     assert "human review remains required" in report
+    assert "Reviewer answers were not provided for this run." in report
 
 
 def test_report_includes_accepted_reviewer_questions_without_raw_rejected_text(tmp_path) -> None:
@@ -144,3 +147,54 @@ def test_report_includes_accepted_reviewer_questions_without_raw_rejected_text(t
     assert "Rejected question candidate count: 1." in report
     assert "Invalid raw model response" not in report
     assert "CUST-001" not in report
+
+
+def test_report_includes_reviewer_answer_summary_table_and_ids(tmp_path) -> None:
+    state = run_workflow("examples/customer_onboarding_sample.csv", tmp_path)
+    reviewer_answers_summary = {
+        "answers_provided": True,
+        "accepted_question_count": 2,
+        "answer_count": 2,
+        "matched_answer_count": 1,
+        "unmatched_answer_count": 1,
+        "answered_question_count": 1,
+        "unanswered_question_count": 1,
+        "needs_follow_up_count": 1,
+        "unmatched_answer_question_ids": ["q_999"],
+        "unanswered_accepted_question_ids": ["q_002"],
+        "answers": [
+            {
+                "question_id": "q_001",
+                "status": "answered",
+                "answer": "The expected grain is one row per onboarding record.",
+                "answered_by": "Reviewer",
+                "answered_at": "2026-06-03",
+                "notes": "Human-authored note.",
+            },
+            {
+                "question_id": "q_999",
+                "status": "needs_follow_up",
+                "answer": "",
+                "answered_by": "Reviewer",
+                "answered_at": "2026-06-03",
+                "notes": "Needs owner input.",
+            },
+        ],
+    }
+
+    report = build_onboarding_review_report(
+        state["dataset_profile"],
+        state["onboarding_context_summary"],
+        state["gap_assessment"],
+        state["reviewer_questions"],
+        reviewer_answers_summary,
+    )
+
+    assert "## Reviewer answers" in report
+    assert "- Matched answer count: 1" in report
+    assert "| q_001 | answered | The expected grain is one row per onboarding record." in report
+    assert "q_999" in report
+    assert "q_002" in report
+    assert "human-authored reviewer input" in report
+    assert "not approval" in report
+    assert "all gaps are closed" not in report.lower()
