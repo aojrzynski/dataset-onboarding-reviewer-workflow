@@ -27,8 +27,15 @@ class WorkflowState(TypedDict):
     status: str
     dataset_path: str
     sheet: str | None
+    context_path: str | None
     dataset_loaded: bool
     dataset_metadata: dict[str, Any]
     dataset_profile: dict[str, Any]
     profile_built: bool
+    context_provided: bool
+    onboarding_context: dict[str, Any]
+    onboarding_context_summary: dict[str, Any]
+    gap_assessment: dict[str, Any]
+    context_loaded: bool
+    gaps_assessed: bool
     loaded_dataset: NotRequired[LoadedDataset]

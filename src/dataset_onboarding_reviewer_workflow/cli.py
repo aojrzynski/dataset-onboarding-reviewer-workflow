@@ -1,4 +1,4 @@
-"""Command-line interface for local dataset intake and profiling."""
+"""Command-line interface for local dataset onboarding artifacts."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from dataset_onboarding_reviewer_workflow import __version__
+
 DEFAULT_OUTPUT_DIR = "outputs/onboarding_run"
 
 
@@ -15,7 +16,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="dataset-onboarding-reviewer",
-        description="Load a local CSV/XLSX/XLSM dataset and write safe aggregate profile artifacts.",
+        description=(
+            "Load a local CSV/XLSX/XLSM dataset and write safe aggregate profile, "
+            "context summary, gap assessment, and trace artifacts."
+        ),
     )
     parser.add_argument(
         "dataset_path",
@@ -36,34 +40,56 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Excel sheet name to load for .xlsx or .xlsm datasets.",
     )
+    parser.add_argument(
+        "--context",
+        default=None,
+        help="Optional path to human-authored onboarding context YAML.",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the graph and write dataset profile plus onboarding trace artifacts."""
+    """Run the graph and write onboarding review artifacts."""
 
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    from dataset_onboarding_reviewer_workflow.context_loader import ContextLoaderError
     from dataset_onboarding_reviewer_workflow.graph import run_workflow
     from dataset_onboarding_reviewer_workflow.intake import DatasetIntakeError
     from dataset_onboarding_reviewer_workflow.output_writers import (
+        write_context_summary,
         write_dataset_profile,
+        write_gap_assessment,
         write_onboarding_trace,
     )
 
     output_dir = Path(args.output_dir)
     try:
-        state = run_workflow(args.dataset_path, output_dir, sheet=args.sheet)
+        state = run_workflow(
+            args.dataset_path,
+            output_dir,
+            sheet=args.sheet,
+            context_path=args.context,
+        )
         profile_path = write_dataset_profile(output_dir, state["dataset_profile"])
         state["artifacts"]["dataset_profile"] = str(profile_path)
+        context_summary_path = write_context_summary(output_dir, state["onboarding_context_summary"])
+        state["artifacts"]["onboarding_context_summary"] = str(context_summary_path)
+        gap_assessment_path = write_gap_assessment(output_dir, state["gap_assessment"])
+        state["artifacts"]["onboarding_gap_assessment"] = str(gap_assessment_path)
         trace_path = write_onboarding_trace(output_dir, state)
     except DatasetIntakeError as exc:
         print(f"Dataset intake failed: {exc}", file=sys.stderr)
         return 2
+    except ContextLoaderError as exc:
+        print(f"Context loading failed: {exc}", file=sys.stderr)
+        return 3
 
-    print("Dataset onboarding profile completed.")
+    print("Dataset onboarding review artifacts completed.")
     print(f"Profile written to: {profile_path}")
+    print(f"Context summary written to: {context_summary_path}")
+    print(f"Gap assessment written to: {gap_assessment_path}")
     print(f"Trace written to: {trace_path}")
     return 0
 

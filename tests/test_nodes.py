@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataset_onboarding_reviewer_workflow.nodes import (
+    assess_gaps_node,
     complete_workflow_run,
+    load_context_node,
     load_dataset_node,
     profile_dataset_node,
     start_workflow_run,
@@ -13,7 +15,10 @@ def write_csv(path):
     path.write_text("customer_id,signup_date,monthly_spend\nC001,2025-01-01,10.5\n", encoding="utf-8")
 
 
-def base_state(dataset_path: str = "examples/customer_onboarding_sample.csv") -> WorkflowState:
+def base_state(
+    dataset_path: str = "examples/customer_onboarding_sample.csv",
+    context_path: str | None = None,
+) -> WorkflowState:
     return {
         "run_id": "test-run",
         "workflow_name": "Dataset Onboarding Reviewer Workflow",
@@ -26,10 +31,17 @@ def base_state(dataset_path: str = "examples/customer_onboarding_sample.csv") ->
         "status": "initialized",
         "dataset_path": dataset_path,
         "sheet": None,
+        "context_path": context_path,
         "dataset_loaded": False,
         "dataset_metadata": {},
         "dataset_profile": {},
         "profile_built": False,
+        "context_provided": False,
+        "onboarding_context": {},
+        "onboarding_context_summary": {},
+        "gap_assessment": {},
+        "context_loaded": False,
+        "gaps_assessed": False,
     }
 
 
@@ -72,10 +84,50 @@ def test_profile_dataset_node_builds_safe_profile(tmp_path) -> None:
     assert state["artifacts"]["dataset_profile"].endswith("dataset_profile.json")
 
 
+def test_load_context_node_summarizes_optional_context(tmp_path) -> None:
+    csv_path = tmp_path / "customers.csv"
+    write_csv(csv_path)
+    context_path = tmp_path / "context.yaml"
+    context_path.write_text("dataset_name: Customers\nknown_primary_key: customer_id\n", encoding="utf-8")
+    profiled = profile_dataset_node(
+        load_dataset_node(start_workflow_run(base_state(str(csv_path), str(context_path))))
+    )
+
+    state = load_context_node(profiled)
+
+    assert state["workflow_steps"] == [
+        "start_workflow_run",
+        "load_dataset",
+        "profile_dataset",
+        "load_context",
+    ]
+    assert state["context_loaded"] is True
+    assert state["context_provided"] is True
+    assert state["onboarding_context_summary"]["normalized_context"]["dataset_name"] == "Customers"
+
+
+def test_assess_gaps_node_builds_gap_assessment(tmp_path) -> None:
+    csv_path = tmp_path / "customers.csv"
+    write_csv(csv_path)
+    context_loaded = load_context_node(
+        profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path)))))
+    )
+
+    state = assess_gaps_node(context_loaded)
+
+    assert state["workflow_steps"][-1] == "assess_gaps"
+    assert state["gaps_assessed"] is True
+    assert state["gap_assessment"]["status"] == "gaps_assessed"
+    assert state["artifacts"]["onboarding_context_summary"].endswith("onboarding_context_summary.json")
+    assert state["artifacts"]["onboarding_gap_assessment"].endswith("onboarding_gap_assessment.json")
+
+
 def test_complete_workflow_run_sets_completion_and_status(tmp_path) -> None:
     csv_path = tmp_path / "customers.csv"
     write_csv(csv_path)
-    state = profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path)))))
+    state = assess_gaps_node(
+        load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+    )
 
     completed = complete_workflow_run(state)
 
@@ -83,6 +135,8 @@ def test_complete_workflow_run_sets_completion_and_status(tmp_path) -> None:
         "start_workflow_run",
         "load_dataset",
         "profile_dataset",
+        "load_context",
+        "assess_gaps",
         "complete_workflow_run",
     ]
     assert completed["completed_at_utc"] is not None

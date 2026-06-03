@@ -30,4 +30,4 @@ jobs:
         run: dataset-onboarding-reviewer --version
 
       - name: CLI intake/profile run smoke test
-        run: dataset-onboarding-reviewer examples/customer_onboarding_sample.csv --output-dir outputs/ci_smoke
+        run: dataset-onboarding-reviewer examples/customer_onboarding_sample.csv --context examples/customer_onboarding_context.yaml --output-dir outputs/ci_smoke

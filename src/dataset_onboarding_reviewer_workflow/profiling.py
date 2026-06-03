@@ -80,7 +80,13 @@ def _candidate_roles(name: str, series: pd.Series, distinct_count: int, distinct
         roles.append("date_like")
     if is_numeric_dtype(series) or MEASURE_NAME_PATTERN.search(normalized_name) or numeric_ratio >= 0.8:
         roles.append("measure_like")
-    if row_count > 0 and 1 < distinct_count <= 20 and distinct_count < row_count:
+
+    has_structural_role = any(
+        role in roles for role in ("id_like", "date_like", "measure_like")
+    )
+    has_category_shape = row_count > 0 and 1 < distinct_count <= 20 and distinct_count < row_count
+    has_categorical_dtype = is_bool_dtype(series) or is_string_dtype(series) or series.dtype == "object"
+    if has_category_shape and has_categorical_dtype and not has_structural_role:
         roles.append("category_like")
     if (is_string_dtype(series) or series.dtype == "object") and distinct_percent > 50 and not roles:
         roles.append("text_like")
