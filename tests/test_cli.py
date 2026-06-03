@@ -26,6 +26,7 @@ def test_cli_help_exits_zero_and_mentions_dataset_path_output_dir_sheet_context_
     assert "--llm-provider" in result.stdout
     assert "--llm-model" in result.stdout
     assert "--max-question-candidates" in result.stdout
+    assert "--answers" in result.stdout
 
 
 def test_cli_version_exits_zero_and_includes_version() -> None:
@@ -35,11 +36,12 @@ def test_cli_version_exits_zero_and_includes_version() -> None:
     assert "0.1.0" in result.stdout
 
 
-def assert_six_artifacts(output_dir) -> None:
+def assert_seven_artifacts(output_dir) -> None:
     assert (output_dir / "dataset_profile.json").exists()
     assert (output_dir / "onboarding_context_summary.json").exists()
     assert (output_dir / "onboarding_gap_assessment.json").exists()
     assert (output_dir / "reviewer_questions.json").exists()
+    assert (output_dir / "reviewer_answers_summary.json").exists()
     assert (output_dir / "onboarding_review_report.md").exists()
     assert (output_dir / "onboarding_trace.json").exists()
 
@@ -50,7 +52,7 @@ def test_cli_run_without_context_creates_all_artifacts(tmp_path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert "Dataset onboarding review artifacts completed." in result.stdout
-    assert_six_artifacts(output_dir)
+    assert_seven_artifacts(output_dir)
     trace_payload = json.loads((output_dir / "onboarding_trace.json").read_text(encoding="utf-8"))
     assert trace_payload["status"] == "completed"
     assert trace_payload["dataset_loaded"] is True
@@ -60,6 +62,8 @@ def test_cli_run_without_context_creates_all_artifacts(tmp_path) -> None:
     assert trace_payload["gaps_assessed"] is True
     assert trace_payload["report_built"] is True
     assert trace_payload["llm_used"] is False
+    assert trace_payload["answers_loaded"] is True
+    assert trace_payload["answers_provided"] is False
     questions_payload = json.loads((output_dir / "reviewer_questions.json").read_text(encoding="utf-8"))
     assert questions_payload["mode"] == "not_requested"
 
@@ -77,8 +81,9 @@ def test_cli_run_with_example_context_creates_all_artifacts(tmp_path) -> None:
     assert result.returncode == 0, result.stderr
     assert "Context summary written to:" in result.stdout
     assert "Gap assessment written to:" in result.stdout
+    assert "Reviewer answers summary written to:" in result.stdout
     assert "Review report written to:" in result.stdout
-    assert_six_artifacts(output_dir)
+    assert_seven_artifacts(output_dir)
     report = (output_dir / "onboarding_review_report.md").read_text(encoding="utf-8")
     assert "# Dataset Onboarding Review Report" in report
     assert "## Gap summary" in report
@@ -167,3 +172,58 @@ def test_cli_generate_questions_unsupported_provider_exits_4(tmp_path) -> None:
 
     assert result.returncode == 4
     assert "Unsupported LLM provider" in result.stderr
+
+
+def test_cli_run_with_example_answers_creates_all_artifacts(tmp_path) -> None:
+    output_dir = tmp_path / "demo_run"
+    result = run_cli(
+        "examples/customer_onboarding_sample.csv",
+        "--context",
+        "examples/customer_onboarding_context.yaml",
+        "--answers",
+        "examples/customer_reviewer_answers.yaml",
+        "--output-dir",
+        str(output_dir),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert_seven_artifacts(output_dir)
+    summary = json.loads((output_dir / "reviewer_answers_summary.json").read_text(encoding="utf-8"))
+    assert summary["answers_provided"] is True
+    assert summary["answer_count"] == 2
+    assert summary["unmatched_answer_count"] == 2
+    trace = json.loads((output_dir / "onboarding_trace.json").read_text(encoding="utf-8"))
+    assert trace["answers_loaded"] is True
+    assert trace["answers_provided"] is True
+
+
+def test_cli_missing_answers_path_exits_5_with_clear_error(tmp_path) -> None:
+    result = run_cli(
+        "examples/customer_onboarding_sample.csv",
+        "--answers",
+        str(tmp_path / "missing.yaml"),
+        "--output-dir",
+        str(tmp_path / "out"),
+    )
+
+    assert result.returncode == 5
+    assert "Reviewer answers loading failed" in result.stderr
+    assert "not found" in result.stderr
+    assert "Dataset onboarding review artifacts completed." not in result.stdout
+
+
+def test_cli_unsupported_answers_extension_exits_5_with_clear_error(tmp_path) -> None:
+    answers_path = tmp_path / "answers.txt"
+    answers_path.write_text("q_001: {}", encoding="utf-8")
+
+    result = run_cli(
+        "examples/customer_onboarding_sample.csv",
+        "--answers",
+        str(answers_path),
+        "--output-dir",
+        str(tmp_path / "out"),
+    )
+
+    assert result.returncode == 5
+    assert "Reviewer answers loading failed" in result.stderr
+    assert "Unsupported reviewer answers extension" in result.stderr

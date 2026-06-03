@@ -9,6 +9,7 @@ from dataset_onboarding_reviewer_workflow.output_writers import (
     CONTEXT_SUMMARY_FILENAME,
     DATASET_PROFILE_FILENAME,
     GAP_ASSESSMENT_FILENAME,
+    REVIEWER_ANSWERS_SUMMARY_FILENAME,
     REVIEWER_QUESTIONS_FILENAME,
     REVIEW_REPORT_FILENAME,
     TRACE_FILENAME,
@@ -150,18 +151,81 @@ def _reviewer_question_lines(reviewer_questions: dict[str, Any] | None) -> list[
     return lines
 
 
+def _reviewer_answer_lines(reviewer_answers_summary: dict[str, Any] | None) -> list[str]:
+    if not isinstance(reviewer_answers_summary, dict):
+        reviewer_answers_summary = {"answers_provided": False}
+
+    lines = [
+        "## Reviewer answers",
+        "",
+        "Reviewer answers are human-authored reviewer input. They are not approval, not a verdict, and do not prove review coverage is complete.",
+        "Human review remains required.",
+        "",
+    ]
+    if not reviewer_answers_summary.get("answers_provided", False):
+        lines.append("Reviewer answers were not provided for this run.")
+        return lines
+
+    lines.extend(
+        [
+            f"- Accepted question count: {_text(reviewer_answers_summary.get('accepted_question_count', 0))}",
+            f"- Answer count: {_text(reviewer_answers_summary.get('answer_count', 0))}",
+            f"- Matched answer count: {_text(reviewer_answers_summary.get('matched_answer_count', 0))}",
+            f"- Unmatched answer count: {_text(reviewer_answers_summary.get('unmatched_answer_count', 0))}",
+            f"- Answered question count: {_text(reviewer_answers_summary.get('answered_question_count', 0))}",
+            f"- Unanswered question count: {_text(reviewer_answers_summary.get('unanswered_question_count', 0))}",
+            f"- Needs follow-up count: {_text(reviewer_answers_summary.get('needs_follow_up_count', 0))}",
+            "",
+            "| Question id | Status | Answer | Answered by | Answered at | Notes |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    answers = reviewer_answers_summary.get("answers", [])
+    if isinstance(answers, list) and answers:
+        for answer in answers:
+            if not isinstance(answer, dict):
+                continue
+            lines.append(
+                "| "
+                + " | ".join(
+                    _escape_table_cell(value)
+                    for value in (
+                        answer.get("question_id"),
+                        answer.get("status"),
+                        answer.get("answer"),
+                        answer.get("answered_by"),
+                        answer.get("answered_at"),
+                        answer.get("notes"),
+                    )
+                )
+                + " |"
+            )
+    else:
+        lines.append("| None | None | None | None | None | None |")
+
+    unmatched = reviewer_answers_summary.get("unmatched_answer_question_ids", [])
+    unanswered = reviewer_answers_summary.get("unanswered_accepted_question_ids", [])
+    lines.extend(["", "- Unmatched answer question IDs:", *_bullet_list([str(item) for item in unmatched] if isinstance(unmatched, list) else [])])
+    lines.extend(["- Unanswered accepted question IDs:", *_bullet_list([str(item) for item in unanswered] if isinstance(unanswered, list) else [])])
+    return lines
+
+
 def build_onboarding_review_report(
     dataset_profile: dict[str, Any],
     context_summary: dict[str, Any],
     gap_assessment: dict[str, Any],
     reviewer_questions: dict[str, Any] | None = None,
+    reviewer_answers_summary: dict[str, Any] | None = None,
     trace_metadata: dict[str, Any] | None = None,
 ) -> str:
     """Return a deterministic Markdown report from safe structured evidence."""
 
-    if trace_metadata is None and isinstance(reviewer_questions, dict) and "artifacts" in reviewer_questions and "mode" not in reviewer_questions:
+    if trace_metadata is None and reviewer_answers_summary is None and isinstance(reviewer_questions, dict) and "artifacts" in reviewer_questions and "mode" not in reviewer_questions:
         trace_metadata = reviewer_questions
         reviewer_questions = None
+    elif trace_metadata is None and isinstance(reviewer_answers_summary, dict) and "artifacts" in reviewer_answers_summary and "answers_provided" not in reviewer_answers_summary:
+        trace_metadata = reviewer_answers_summary
+        reviewer_answers_summary = None
 
     metadata = _metadata(dataset_profile)
     observations = _observations(dataset_profile)
@@ -300,6 +364,8 @@ def build_onboarding_review_report(
             "",
             *_reviewer_question_lines(reviewer_questions),
             "",
+            *_reviewer_answer_lines(reviewer_answers_summary),
+            "",
             "## Suggested next steps",
             "",
             *_bullet_list([str(step) for step in next_steps] if isinstance(next_steps, list) else []),
@@ -310,6 +376,7 @@ def build_onboarding_review_report(
             f"- onboarding_context_summary.json: {_artifact_path(trace_metadata, 'onboarding_context_summary', CONTEXT_SUMMARY_FILENAME)}",
             f"- onboarding_gap_assessment.json: {_artifact_path(trace_metadata, 'onboarding_gap_assessment', GAP_ASSESSMENT_FILENAME)}",
             f"- reviewer_questions.json: {_artifact_path(trace_metadata, 'reviewer_questions', REVIEWER_QUESTIONS_FILENAME)}",
+            f"- reviewer_answers_summary.json: {_artifact_path(trace_metadata, 'reviewer_answers_summary', REVIEWER_ANSWERS_SUMMARY_FILENAME)}",
             f"- onboarding_review_report.md: {_artifact_path(trace_metadata, 'onboarding_review_report', REVIEW_REPORT_FILENAME)}",
             f"- onboarding_trace.json: {_artifact_path(trace_metadata, 'onboarding_trace', TRACE_FILENAME)}",
             "",
@@ -317,6 +384,7 @@ def build_onboarding_review_report(
             "",
             "- Deterministic checks only; gaps are not exhaustive.",
             "- Optional LLM question generation is bounded and validated when requested; LLM output is not authoritative.",
+            "- Reviewer answers are human-authored input and do not close gaps automatically.",
             "- No review decision was made.",
             "- No legal, compliance, or privacy verdict was made.",
             "- Raw rows, sampled records, top values, distinct value lists, and raw value examples were not written.",
