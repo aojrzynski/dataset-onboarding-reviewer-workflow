@@ -1,4 +1,9 @@
-"""Optional LLM client for bounded reviewer-question candidate generation."""
+"""Optional LLM client for bounded reviewer-question candidate generation.
+
+Deterministic workflow runs do not import OpenAI or require an API key. This
+module is used only when question generation is explicitly requested, and its
+output remains candidate material that is validated elsewhere.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +14,7 @@ from typing import Any
 
 
 class LLMGenerationError(RuntimeError):
-    """Raised when optional LLM setup or generation fails."""
+    """Raised when optional LLM setup, prompting, or JSON parsing fails."""
 
 
 @dataclass(frozen=True)
@@ -20,7 +25,12 @@ class LLMConfig:
 
 
 def build_question_generation_prompt(safe_input: dict[str, Any], max_questions: int) -> str:
-    """Build a bounded prompt from safe deterministic evidence only."""
+    """Build a bounded prompt asking for reviewer-question candidates only.
+
+    The prompt carries safe evidence and boundary instructions, not raw rows or
+    secrets. Callers should not print the prompt because it may still contain
+    user-authored context.
+    """
 
     safe_json = json.dumps(safe_input, indent=2, sort_keys=True)
     return (
@@ -52,8 +62,11 @@ def _extract_response_text(response: Any) -> str:
 
 
 def _generate_openai(config: LLMConfig, safe_input: dict[str, Any]) -> Any:
+    """Call OpenAI only for explicitly requested question generation."""
     if not os.environ.get("OPENAI_API_KEY"):
         raise LLMGenerationError("OPENAI_API_KEY is required when --generate-questions uses OpenAI.")
+    # The import is lazy so local deterministic runs do not need the optional
+    # dependency installed. OPENAI_API_KEY is checked only on this path.
     try:
         from openai import OpenAI
     except ImportError as exc:  # pragma: no cover - tested with monkeypatch in environments with/without package.
@@ -62,6 +75,8 @@ def _generate_openai(config: LLMConfig, safe_input: dict[str, Any]) -> Any:
         ) from exc
 
     prompt = build_question_generation_prompt(safe_input, config.max_question_candidates)
+    # Do not log prompt text or environment values here; provider failures are
+    # surfaced as typed errors without printing prompts or secrets.
     client = OpenAI()
     try:
         if hasattr(client, "responses"):
@@ -78,13 +93,16 @@ def _generate_openai(config: LLMConfig, safe_input: dict[str, Any]) -> Any:
         raise LLMGenerationError(f"OpenAI question generation failed: {exc}") from exc
 
     try:
+        # Strict JSON parsing is part of the bounded LLM contract. The parsed
+        # object is still non-authoritative and must pass deterministic
+        # validation before any candidates are accepted.
         return json.loads(text)
     except json.JSONDecodeError as exc:
         raise LLMGenerationError("OpenAI question generation response was not valid JSON.") from exc
 
 
 def generate_question_candidates(config: LLMConfig, safe_input: dict[str, Any]) -> Any:
-    """Generate raw question candidates with the configured optional provider."""
+    """Generate raw, non-authoritative question candidates from the provider."""
 
     if config.provider != "openai":
         raise LLMGenerationError(f"Unsupported LLM provider '{config.provider}'. Only 'openai' is supported.")

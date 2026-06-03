@@ -1,4 +1,10 @@
-"""Load and summarize optional human-authored onboarding context."""
+"""Load and summarize optional human-authored onboarding context.
+
+Context YAML is reviewer-provided input, not proof of approval or completeness.
+Supported fields are normalized for deterministic comparison, while unknown
+fields are carried forward by name so the run can flag them without exposing
+unrecognized values.
+"""
 
 from __future__ import annotations
 
@@ -67,6 +73,7 @@ def _normalize_scalar(value: Any) -> str | None:
 
 
 def _normalize_known_context(mapping: dict[str, Any]) -> dict[str, Any]:
+    """Normalize only supported context fields into stable scalar/list shapes."""
     normalized: dict[str, Any] = {}
     for field in KNOWN_CONTEXT_FIELDS:
         if field not in mapping:
@@ -162,7 +169,12 @@ def _referenced_fields(normalized_context: dict[str, Any]) -> list[str]:
 def summarize_onboarding_context(
     context: dict[str, Any], dataset_profile: dict[str, Any]
 ) -> dict[str, Any]:
-    """Summarize normalized context and align referenced fields to profile columns."""
+    """Summarize context and compare field references to profiled columns.
+
+    Field-reference checks use only safe column names from the profile. Missing
+    or unknown references become review evidence; they do not fail the run or
+    decide whether the context is correct.
+    """
 
     normalized_context = dict(context.get("normalized_context", {}))
     known_fields = [field for field in KNOWN_CONTEXT_FIELDS if field in normalized_context]

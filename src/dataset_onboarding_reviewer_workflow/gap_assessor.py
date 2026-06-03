@@ -1,4 +1,9 @@
-"""Deterministic onboarding context gap assessment."""
+"""Deterministic, non-authoritative onboarding context gap assessment.
+
+This module turns safe profile/context evidence into review prompts. Priority
+labels support triage only; gaps are not exhaustive and do not decide whether a
+dataset is ready, governed, compliant, complete, or approved.
+"""
 
 from __future__ import annotations
 
@@ -47,6 +52,8 @@ def _add_gap(
     related_context_fields: list[str],
     related_dataset_fields: list[str] | None = None,
 ) -> None:
+    # Gap records are structured prompts for reviewers, not final severity or
+    # approval findings.
     gaps.append(
         {
             "gap_id": gap_id,
@@ -90,6 +97,8 @@ def assess_onboarding_gaps(
 
     gaps: list[dict[str, Any]] = []
 
+    # Missing core context fields are surfaced first because reviewers usually
+    # need ownership, purpose, grain, source, and contacts before follow-up work.
     high_required_messages = {
         "dataset_name": "Dataset name is not provided in onboarding context.",
         "dataset_owner": "Dataset owner is not provided in onboarding context.",
@@ -151,6 +160,8 @@ def assess_onboarding_gaps(
             ["known_downstream_uses"],
         )
 
+    # Role hints from profiling only prompt questions about context coverage;
+    # they do not prove the hinted role is correct.
     role_gap_specs = [
         (
             "known_date_fields",

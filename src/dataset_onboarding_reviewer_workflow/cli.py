@@ -1,4 +1,10 @@
-"""Command-line interface for local dataset onboarding artifacts."""
+"""User-facing orchestration for local dataset onboarding review runs.
+
+The CLI translates arguments into workflow state, runs the LangGraph pipeline,
+and writes the seven review artifacts after graph execution. Normal
+non-LLM runs stay deterministic and do not require OpenAI, an API key, or any
+network call.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +18,7 @@ DEFAULT_OUTPUT_DIR = "outputs/onboarding_run"
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the argparse parser for local workflow runs."""
+    """Build the parser without changing the workflow contract or exit behavior."""
 
     parser = argparse.ArgumentParser(
         prog="dataset-onboarding-reviewer",
@@ -75,7 +81,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the graph and write onboarding review artifacts."""
+    """Run the workflow, then write artifacts from completed state.
+
+    The graph owns stage ordering and evidence accumulation. File writing stays
+    here so the command line remains the user-facing boundary for artifact I/O
+    and for the distinct intake, context, LLM, and reviewer-answer exit codes.
+    """
 
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -97,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
 
     output_dir = Path(args.output_dir)
     try:
+        # Build all state first. Artifact files are written only after the graph
+        # has completed so graph nodes remain focused on orchestration state.
         state = run_workflow(
             args.dataset_path,
             output_dir,
@@ -108,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
             llm_model=args.llm_model,
             max_question_candidates=args.max_question_candidates,
         )
+        # These writers persist existing safe JSON/Markdown payloads; they do
+        # not re-run profiling, call an LLM, or add review decisions.
         profile_path = write_dataset_profile(output_dir, state["dataset_profile"])
         state["artifacts"]["dataset_profile"] = str(profile_path)
         context_summary_path = write_context_summary(output_dir, state["onboarding_context_summary"])
@@ -125,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         state["artifacts"]["onboarding_review_report"] = str(review_report_path)
         trace_path = write_onboarding_trace(output_dir, state)
+    # Exit codes intentionally separate failure boundaries so callers can tell
+    # whether the run failed during intake, context, optional LLM, or answers.
     except DatasetIntakeError as exc:
         print(f"Dataset intake failed: {exc}", file=sys.stderr)
         return 2

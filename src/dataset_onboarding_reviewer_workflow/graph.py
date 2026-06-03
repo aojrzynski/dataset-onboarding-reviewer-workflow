@@ -1,4 +1,9 @@
-"""LangGraph construction and execution for the local onboarding workflow."""
+"""LangGraph construction and execution for the local onboarding workflow.
+
+The graph owns ordering only. Dataset loading, profiling, context handling,
+gap assessment, optional question generation, answer matching, and reporting
+stay in ordinary functions so each stage remains easy to test.
+"""
 
 from __future__ import annotations
 
@@ -37,12 +42,13 @@ EXPECTED_WORKFLOW_STEPS = [
 
 
 def build_graph():
-    """Build the local-first LangGraph workflow for PR #5.
+    """Build the intentionally linear v1 graph.
 
-    State is the shared workflow record, nodes are deterministic steps, and
-    edges define sequencing. Dataset intake, context handling, profiling, and
-    gap logic live outside graph construction so they can be tested as normal
-    Python functions.
+    Edges define the stage order; business logic lives in node helpers and
+    domain modules. The question-generation node always runs to record the
+    safe handoff payload, but it only calls an LLM when explicitly requested.
+    Reviewer answers run after questions so answer IDs can be matched to
+    accepted question candidate IDs where possible.
     """
 
     graph = StateGraph(WorkflowState)
@@ -56,6 +62,8 @@ def build_graph():
     graph.add_node("build_report_node", build_report_node)
     graph.add_node("complete_workflow_run", complete_workflow_run)
 
+    # v1 is linear by design: each edge is a workflow handoff, not a decision
+    # branch or approval gate.
     graph.add_edge(START, "start_workflow_run")
     graph.add_edge("start_workflow_run", "load_dataset_node")
     graph.add_edge("load_dataset_node", "profile_dataset_node")
@@ -81,7 +89,11 @@ def initial_state(
     llm_model: str = "gpt-4.1-mini",
     max_question_candidates: int = 8,
 ) -> WorkflowState:
-    """Create the initial state before any graph node has run."""
+    """Create the initial state before any graph node has run.
+
+    The default path is deterministic and local. Optional LLM settings are only
+    used later if question generation is requested.
+    """
 
     output_path = Path(output_dir)
     return {
@@ -136,7 +148,11 @@ def run_workflow(
     llm_model: str = "gpt-4.1-mini",
     max_question_candidates: int = 8,
 ) -> WorkflowState:
-    """Run the local onboarding graph and return completed workflow state."""
+    """Run the local onboarding graph and return completed workflow state.
+
+    Artifact writing is intentionally outside this function so graph execution
+    remains a state-building step rather than a file-output step.
+    """
 
     compiled_graph = build_graph()
     return compiled_graph.invoke(

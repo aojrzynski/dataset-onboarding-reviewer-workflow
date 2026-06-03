@@ -1,4 +1,9 @@
-"""Build deterministic Markdown onboarding review reports from safe artifacts."""
+"""Build deterministic Markdown onboarding review reports from safe artifacts.
+
+Report generation is plain Markdown assembly. It summarizes existing safe
+profile, context, gap, question, answer, and trace evidence; it does not call
+an LLM, inspect raw rows, include value lists, or make review decisions.
+"""
 
 from __future__ import annotations
 
@@ -32,6 +37,7 @@ def _text(value: Any) -> str:
 
 
 def _escape_table_cell(value: Any) -> str:
+    """Escape table content so reviewer-authored text keeps Markdown stable."""
     return _text(value).replace("|", "\\|").replace("\n", " ")
 
 
@@ -102,6 +108,7 @@ def _sorted_gaps(gaps: list[Any]) -> list[dict[str, Any]]:
 
 
 def _reviewer_question_lines(reviewer_questions: dict[str, Any] | None) -> list[str]:
+    """Render question candidates as review material, not decisions."""
     if not isinstance(reviewer_questions, dict):
         reviewer_questions = {}
     mode = reviewer_questions.get("mode", "not_requested")
@@ -152,6 +159,7 @@ def _reviewer_question_lines(reviewer_questions: dict[str, Any] | None) -> list[
 
 
 def _reviewer_answer_lines(reviewer_answers_summary: dict[str, Any] | None) -> list[str]:
+    """Render human-authored answers without treating them as gap closure."""
     if not isinstance(reviewer_answers_summary, dict):
         reviewer_answers_summary = {"answers_provided": False}
 
@@ -218,7 +226,12 @@ def build_onboarding_review_report(
     reviewer_answers_summary: dict[str, Any] | None = None,
     trace_metadata: dict[str, Any] | None = None,
 ) -> str:
-    """Return a deterministic Markdown report from safe structured evidence."""
+    """Return a deterministic Markdown report from safe structured evidence.
+
+    The report is an assembled review aid. It avoids raw dataset rows and value
+    lists, presents questions and answers as follow-up material, and leaves all
+    final authority with human review outside the workflow.
+    """
 
     if trace_metadata is None and reviewer_answers_summary is None and isinstance(reviewer_questions, dict) and "artifacts" in reviewer_questions and "mode" not in reviewer_questions:
         trace_metadata = reviewer_questions

@@ -1,4 +1,10 @@
-"""Local dataset intake helpers that keep raw rows out of artifacts."""
+"""Local-only dataset intake for CSV and Excel files.
+
+Intake is the boundary where a user-provided file becomes internal workflow
+state. It reads local files only, fails early for unsupported or unusable
+inputs, and returns metadata that describes files, shape, sheets, and columns
+without exposing raw rows.
+"""
 
 from __future__ import annotations
 
@@ -38,6 +44,7 @@ def _base_metadata(dataset_path: Path) -> dict[str, Any]:
 
 
 def _validate_loaded_dataframe(dataframe: pd.DataFrame, dataset_path: Path) -> None:
+    """Fail early when there is no row-and-column structure to profile."""
     if dataframe.empty or len(dataframe.columns) == 0:
         raise DatasetIntakeError(
             f"Dataset '{dataset_path}' did not contain any rows and columns to profile."
@@ -45,6 +52,11 @@ def _validate_loaded_dataframe(dataframe: pd.DataFrame, dataset_path: Path) -> N
 
 
 def _load_excel_dataset(dataset_path: Path, sheet: str | None) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Load one Excel sheet using deterministic selection.
+
+    A named sheet must exist; otherwise the first workbook sheet is selected so
+    repeated runs over the same file choose the same tab.
+    """
     try:
         excel_file = pd.ExcelFile(dataset_path, engine="openpyxl")
     except ValueError as exc:
@@ -108,6 +120,8 @@ def load_dataset(dataset_path: Path | str, sheet: str | None = None) -> LoadedDa
         raise DatasetIntakeError(f"Could not load dataset '{path}': {exc}") from exc
 
     _validate_loaded_dataframe(dataframe, path)
+    # These metadata fields are safe artifact evidence: file/shape/column facts
+    # without row samples, cell values, top values, or distinct value lists.
     metadata.update(
         {
             "row_count": int(len(dataframe)),

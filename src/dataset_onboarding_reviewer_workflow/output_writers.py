@@ -1,4 +1,9 @@
-"""Output helpers for deterministic JSON artifacts."""
+"""Deterministic artifact writers for JSON and Markdown outputs.
+
+Writers persist completed graph state after orchestration. Stable JSON sorting
+and formatting support review and tests, and trace output intentionally keeps
+to paths/counts/status instead of full payloads, prompts, or answer text.
+"""
 
 from __future__ import annotations
 
@@ -23,7 +28,7 @@ NO_REVIEW_DECISION_NOTE = (
 
 
 def ensure_output_dir(output_dir: Path | str) -> Path:
-    """Create the output directory if needed and return it as a Path."""
+    """Create the output directory used by the post-graph artifact boundary."""
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -151,8 +156,15 @@ def _question_counts(state: WorkflowState) -> dict[str, int]:
 
 
 def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
-    """Build trace metadata without raw rows or full profile/context/gap payloads."""
+    """Build trace metadata without raw rows or full review payloads.
 
+    The trace records artifact paths, stage flags, and counts. It intentionally
+    excludes the full profile/context/gap/question payloads, answer text, and
+    prompt input so the trace stays compact and boundary-focused.
+    """
+
+    # Trace paths are recorded after graph execution and CLI writes so the graph
+    # remains focused on state handoffs rather than file output.
     artifacts = dict(state["artifacts"])
     artifacts.setdefault("dataset_profile", str(Path(state["output_dir"]) / DATASET_PROFILE_FILENAME))
     artifacts.setdefault(

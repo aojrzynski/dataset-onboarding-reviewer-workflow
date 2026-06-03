@@ -56,4 +56,4 @@ Any future LLM work should keep raw rows out of prompts, keep generated output b
 - PR #6 added optional human-authored reviewer answers, answer matching, answer summaries, and report updates.
 - PR #7 organized and expanded the documentation set for the v1 workflow; it did not change runtime behavior.
 
-A follow-up documentation/code-readability PR may add guided source comments and docstring polish without changing behavior.
+PR #8 completed guided source comments and docstring polish without changing behavior.

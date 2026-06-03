@@ -1,4 +1,9 @@
-"""Safe aggregate profiling for locally loaded datasets."""
+"""Safe aggregate profiling for locally loaded datasets.
+
+Profiling converts the internal dataframe into JSON-safe aggregate evidence.
+Column names and counts are included; raw values, sampled rows, top values,
+distinct value lists, and min/max values are intentionally excluded.
+"""
 
 from __future__ import annotations
 
@@ -43,6 +48,7 @@ def _parseability_ratio(series: pd.Series, kind: str) -> float:
 
 
 def _infer_kind(name: str, series: pd.Series, distinct_percent: float) -> str:
+    """Infer a coarse column kind as a conservative review hint, not a decision."""
     normalized_name = _normalized_column_name(name)
     if is_datetime64_any_dtype(series) or DATE_NAME_PATTERN.search(normalized_name):
         return "date_like"
@@ -65,6 +71,12 @@ def _infer_kind(name: str, series: pd.Series, distinct_percent: float) -> str:
 
 
 def _candidate_roles(name: str, series: pd.Series, distinct_count: int, distinct_percent: float) -> list[str]:
+    """Return deterministic role hints for reviewer triage.
+
+    ID, date, measure, category, and text-like labels are conservative hints
+    from names, dtypes, and aggregate cardinality. They are not authoritative
+    semantic classifications.
+    """
     normalized_name = _normalized_column_name(name)
     roles: list[str] = []
     row_count = len(series)
@@ -101,6 +113,7 @@ def _empty_string_count(series: pd.Series) -> int:
 
 
 def _column_profile(name: str, position: int, series: pd.Series) -> dict[str, Any]:
+    """Profile one column with aggregate counts only."""
     row_count = len(series)
     non_null_count = int(series.notna().sum())
     missing_count = int(row_count - non_null_count)
@@ -130,7 +143,12 @@ def _duplicate_normalized_column_names(column_names: list[str]) -> list[str]:
 
 
 def build_safe_dataset_profile(loaded_dataset: LoadedDataset) -> dict[str, Any]:
-    """Build a deterministic aggregate profile without exposing row values."""
+    """Build a deterministic aggregate profile without exposing row values.
+
+    The profile is safe evidence for review and downstream prompts because it
+    preserves column names and aggregate counts while excluding raw rows,
+    samples, top values, distinct lists, and min/max values.
+    """
 
     dataframe = loaded_dataset.dataframe
     metadata = dict(loaded_dataset.metadata)
