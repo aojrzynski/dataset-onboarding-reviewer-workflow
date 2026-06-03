@@ -9,6 +9,7 @@ from dataset_onboarding_reviewer_workflow.output_writers import (
     CONTEXT_SUMMARY_FILENAME,
     DATASET_PROFILE_FILENAME,
     GAP_ASSESSMENT_FILENAME,
+    REVIEWER_QUESTIONS_FILENAME,
     REVIEW_REPORT_FILENAME,
     TRACE_FILENAME,
 )
@@ -99,13 +100,68 @@ def _sorted_gaps(gaps: list[Any]) -> list[dict[str, Any]]:
     return [gap for _, gap in indexed]
 
 
+def _reviewer_question_lines(reviewer_questions: dict[str, Any] | None) -> list[str]:
+    if not isinstance(reviewer_questions, dict):
+        reviewer_questions = {}
+    mode = reviewer_questions.get("mode", "not_requested")
+    accepted = reviewer_questions.get("accepted_questions", [])
+    if not isinstance(accepted, list):
+        accepted = []
+    rejected_count = int(reviewer_questions.get("rejected_count", 0))
+
+    lines = [
+        "## Reviewer questions",
+        "",
+        "Reviewer questions are candidates only. They are not authoritative or complete, and human review remains required.",
+        "",
+    ]
+    if mode == "not_requested":
+        lines.append("Reviewer question generation was not requested for this run.")
+    elif accepted:
+        lines.extend(
+            [
+                "| Priority | Category | Question | Related gap ids | Related context fields | Related dataset fields |",
+                "| --- | --- | --- | --- | --- | --- |",
+            ]
+        )
+        for question in accepted:
+            if not isinstance(question, dict):
+                continue
+            lines.append(
+                "| "
+                + " | ".join(
+                    _escape_table_cell(value)
+                    for value in (
+                        question.get("priority"),
+                        question.get("category"),
+                        question.get("question"),
+                        question.get("related_gap_ids", []),
+                        question.get("related_context_fields", []),
+                        question.get("related_dataset_fields", []),
+                    )
+                )
+                + " |"
+            )
+    else:
+        lines.append("No LLM-generated reviewer question candidates passed deterministic validation.")
+
+    if rejected_count:
+        lines.append(f"Rejected question candidate count: {rejected_count}.")
+    return lines
+
+
 def build_onboarding_review_report(
     dataset_profile: dict[str, Any],
     context_summary: dict[str, Any],
     gap_assessment: dict[str, Any],
+    reviewer_questions: dict[str, Any] | None = None,
     trace_metadata: dict[str, Any] | None = None,
 ) -> str:
     """Return a deterministic Markdown report from safe structured evidence."""
+
+    if trace_metadata is None and isinstance(reviewer_questions, dict) and "artifacts" in reviewer_questions and "mode" not in reviewer_questions:
+        trace_metadata = reviewer_questions
+        reviewer_questions = None
 
     metadata = _metadata(dataset_profile)
     observations = _observations(dataset_profile)
@@ -242,6 +298,8 @@ def build_onboarding_review_report(
     lines.extend(
         [
             "",
+            *_reviewer_question_lines(reviewer_questions),
+            "",
             "## Suggested next steps",
             "",
             *_bullet_list([str(step) for step in next_steps] if isinstance(next_steps, list) else []),
@@ -251,13 +309,14 @@ def build_onboarding_review_report(
             f"- dataset_profile.json: {_artifact_path(trace_metadata, 'dataset_profile', DATASET_PROFILE_FILENAME)}",
             f"- onboarding_context_summary.json: {_artifact_path(trace_metadata, 'onboarding_context_summary', CONTEXT_SUMMARY_FILENAME)}",
             f"- onboarding_gap_assessment.json: {_artifact_path(trace_metadata, 'onboarding_gap_assessment', GAP_ASSESSMENT_FILENAME)}",
+            f"- reviewer_questions.json: {_artifact_path(trace_metadata, 'reviewer_questions', REVIEWER_QUESTIONS_FILENAME)}",
             f"- onboarding_review_report.md: {_artifact_path(trace_metadata, 'onboarding_review_report', REVIEW_REPORT_FILENAME)}",
             f"- onboarding_trace.json: {_artifact_path(trace_metadata, 'onboarding_trace', TRACE_FILENAME)}",
             "",
             "## Limitations",
             "",
             "- Deterministic checks only; gaps are not exhaustive.",
-            "- No LLM was used to build this report.",
+            "- Optional LLM question generation is bounded and validated when requested; LLM output is not authoritative.",
             "- No review decision was made.",
             "- No legal, compliance, or privacy verdict was made.",
             "- Raw rows, sampled records, top values, distinct value lists, and raw value examples were not written.",

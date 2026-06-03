@@ -40,4 +40,12 @@ class WorkflowState(TypedDict):
     context_loaded: bool
     gaps_assessed: bool
     report_built: bool
+    generate_questions: bool
+    llm_provider: str | None
+    llm_model: str | None
+    max_question_candidates: int
+    question_generation_input: dict[str, Any]
+    reviewer_questions: dict[str, Any]
+    questions_generated: bool
+    llm_used: bool
     loaded_dataset: NotRequired[LoadedDataset]

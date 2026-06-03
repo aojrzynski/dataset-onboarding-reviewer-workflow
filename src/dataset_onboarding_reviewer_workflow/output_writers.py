@@ -12,6 +12,7 @@ TRACE_FILENAME = "onboarding_trace.json"
 DATASET_PROFILE_FILENAME = "dataset_profile.json"
 CONTEXT_SUMMARY_FILENAME = "onboarding_context_summary.json"
 GAP_ASSESSMENT_FILENAME = "onboarding_gap_assessment.json"
+REVIEWER_QUESTIONS_FILENAME = "reviewer_questions.json"
 REVIEW_REPORT_FILENAME = "onboarding_review_report.md"
 NO_REVIEW_DECISION_NOTE = (
     "Local onboarding artifact run only: a dataset was loaded, a safe aggregate profile "
@@ -53,6 +54,12 @@ def write_gap_assessment(output_dir: Path | str, gap_assessment: dict[str, Any])
     """Write the deterministic onboarding gap assessment artifact."""
 
     return write_json_artifact(output_dir, GAP_ASSESSMENT_FILENAME, gap_assessment)
+
+
+def write_reviewer_questions(output_dir: Path | str, reviewer_questions: dict[str, Any]) -> Path:
+    """Write the optional reviewer-question candidates artifact."""
+
+    return write_json_artifact(output_dir, REVIEWER_QUESTIONS_FILENAME, reviewer_questions)
 
 
 def write_markdown_artifact(output_dir: Path | str, filename: str, content: str) -> Path:
@@ -107,6 +114,17 @@ def _gap_counts(state: WorkflowState) -> dict[str, int]:
     }
 
 
+def _question_counts(state: WorkflowState) -> dict[str, int]:
+    reviewer_questions = state.get("reviewer_questions", {})
+    if not isinstance(reviewer_questions, dict):
+        reviewer_questions = {}
+    return {
+        "candidate_question_count": int(reviewer_questions.get("candidate_count", 0)),
+        "accepted_question_count": int(reviewer_questions.get("accepted_count", 0)),
+        "rejected_question_count": int(reviewer_questions.get("rejected_count", 0)),
+    }
+
+
 def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
     """Build trace metadata without raw rows or full profile/context/gap payloads."""
 
@@ -117,6 +135,9 @@ def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
     )
     artifacts.setdefault(
         "onboarding_gap_assessment", str(Path(state["output_dir"]) / GAP_ASSESSMENT_FILENAME)
+    )
+    artifacts.setdefault(
+        "reviewer_questions", str(Path(state["output_dir"]) / REVIEWER_QUESTIONS_FILENAME)
     )
     artifacts.setdefault(
         "onboarding_review_report", str(Path(state["output_dir"]) / REVIEW_REPORT_FILENAME)
@@ -138,14 +159,19 @@ def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
         "context_provided": state["context_provided"],
         "gaps_assessed": state["gaps_assessed"],
         "report_built": state.get("report_built", False),
+        "generate_questions_requested": state.get("generate_questions", False),
+        "questions_generated": state.get("questions_generated", False),
+        "llm_used": state.get("llm_used", False),
         "dataset_metadata_summary": _trace_dataset_metadata_summary(state),
         "profile_artifact_path": artifacts["dataset_profile"],
         "context_summary_artifact_path": artifacts["onboarding_context_summary"],
         "gap_assessment_artifact_path": artifacts["onboarding_gap_assessment"],
+        "reviewer_questions_artifact_path": artifacts["reviewer_questions"],
         "review_report_artifact_path": artifacts["onboarding_review_report"],
         "trace_artifact_path": artifacts["onboarding_trace"],
         "context_counts": _context_counts(state),
         "gap_counts": _gap_counts(state),
+        "reviewer_question_counts": _question_counts(state),
         "review_decision_made": False,
         "note": NO_REVIEW_DECISION_NOTE,
     }

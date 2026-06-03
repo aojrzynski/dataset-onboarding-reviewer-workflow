@@ -12,6 +12,7 @@ from dataset_onboarding_reviewer_workflow.nodes import (
     assess_gaps_node,
     build_report_node,
     complete_workflow_run,
+    generate_reviewer_questions_node,
     load_context_node,
     load_dataset_node,
     profile_dataset_node,
@@ -27,13 +28,14 @@ EXPECTED_WORKFLOW_STEPS = [
     "profile_dataset",
     "load_context",
     "assess_gaps",
+    "generate_reviewer_questions",
     "build_report",
     "complete_workflow_run",
 ]
 
 
 def build_graph():
-    """Build the deterministic LangGraph workflow for PR #4.
+    """Build the local-first LangGraph workflow for PR #5.
 
     State is the shared workflow record, nodes are deterministic steps, and
     edges define sequencing. Dataset intake, context handling, profiling, and
@@ -47,6 +49,7 @@ def build_graph():
     graph.add_node("profile_dataset_node", profile_dataset_node)
     graph.add_node("load_context_node", load_context_node)
     graph.add_node("assess_gaps_node", assess_gaps_node)
+    graph.add_node("generate_reviewer_questions_node", generate_reviewer_questions_node)
     graph.add_node("build_report_node", build_report_node)
     graph.add_node("complete_workflow_run", complete_workflow_run)
 
@@ -55,7 +58,8 @@ def build_graph():
     graph.add_edge("load_dataset_node", "profile_dataset_node")
     graph.add_edge("profile_dataset_node", "load_context_node")
     graph.add_edge("load_context_node", "assess_gaps_node")
-    graph.add_edge("assess_gaps_node", "build_report_node")
+    graph.add_edge("assess_gaps_node", "generate_reviewer_questions_node")
+    graph.add_edge("generate_reviewer_questions_node", "build_report_node")
     graph.add_edge("build_report_node", "complete_workflow_run")
     graph.add_edge("complete_workflow_run", END)
 
@@ -67,6 +71,10 @@ def initial_state(
     output_dir: Path | str,
     sheet: str | None = None,
     context_path: Path | str | None = None,
+    generate_questions: bool = False,
+    llm_provider: str = "openai",
+    llm_model: str = "gpt-4.1-mini",
+    max_question_candidates: int = 8,
 ) -> WorkflowState:
     """Create the initial state before any graph node has run."""
 
@@ -96,6 +104,14 @@ def initial_state(
         "context_loaded": False,
         "gaps_assessed": False,
         "report_built": False,
+        "generate_questions": generate_questions,
+        "llm_provider": llm_provider,
+        "llm_model": llm_model,
+        "max_question_candidates": max(0, int(max_question_candidates)),
+        "question_generation_input": {},
+        "reviewer_questions": {},
+        "questions_generated": False,
+        "llm_used": False,
     }
 
 
@@ -104,10 +120,23 @@ def run_workflow(
     output_dir: Path | str,
     sheet: str | None = None,
     context_path: Path | str | None = None,
+    generate_questions: bool = False,
+    llm_provider: str = "openai",
+    llm_model: str = "gpt-4.1-mini",
+    max_question_candidates: int = 8,
 ) -> WorkflowState:
     """Run the local onboarding graph and return completed workflow state."""
 
     compiled_graph = build_graph()
     return compiled_graph.invoke(
-        initial_state(dataset_path, output_dir, sheet=sheet, context_path=context_path)
+        initial_state(
+            dataset_path,
+            output_dir,
+            sheet=sheet,
+            context_path=context_path,
+            generate_questions=generate_questions,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            max_question_candidates=max_question_candidates,
+        )
     )

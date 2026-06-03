@@ -23,6 +23,9 @@ dependencies = [
 dev = [
   "pytest",
 ]
+llm = [
+  "openai",
+]
 
 [project.scripts]
 dataset-onboarding-reviewer = "dataset_onboarding_reviewer_workflow.cli:main"

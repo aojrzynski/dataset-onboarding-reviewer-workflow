@@ -11,14 +11,21 @@ from dataset_onboarding_reviewer_workflow.context_loader import (
 )
 from dataset_onboarding_reviewer_workflow.gap_assessor import assess_onboarding_gaps
 from dataset_onboarding_reviewer_workflow.intake import load_dataset
+from dataset_onboarding_reviewer_workflow.llm_client import LLMConfig, generate_question_candidates
 from dataset_onboarding_reviewer_workflow.output_writers import (
     CONTEXT_SUMMARY_FILENAME,
     DATASET_PROFILE_FILENAME,
     GAP_ASSESSMENT_FILENAME,
+    REVIEWER_QUESTIONS_FILENAME,
     REVIEW_REPORT_FILENAME,
     TRACE_FILENAME,
 )
 from dataset_onboarding_reviewer_workflow.profiling import build_safe_dataset_profile
+from dataset_onboarding_reviewer_workflow.question_input_builder import build_question_generation_input
+from dataset_onboarding_reviewer_workflow.reviewer_questions import (
+    empty_question_result,
+    validate_question_candidates,
+)
 from dataset_onboarding_reviewer_workflow.report_builder import build_onboarding_review_report
 from dataset_onboarding_reviewer_workflow.state import WorkflowState
 
@@ -41,6 +48,8 @@ def _copy_state_with_step(state: WorkflowState, step_name: str) -> WorkflowState
     next_state["onboarding_context_summary"] = dict(state.get("onboarding_context_summary", {}))
     next_state["gap_assessment"] = dict(state.get("gap_assessment", {}))
     next_state["onboarding_review_report"] = str(state.get("onboarding_review_report", ""))
+    next_state["question_generation_input"] = dict(state.get("question_generation_input", {}))
+    next_state["reviewer_questions"] = dict(state.get("reviewer_questions", {}))
     return next_state
 
 
@@ -108,6 +117,40 @@ def assess_gaps_node(state: WorkflowState) -> WorkflowState:
     return next_state
 
 
+def generate_reviewer_questions_node(state: WorkflowState) -> WorkflowState:
+    """Optionally generate and deterministically validate reviewer questions."""
+
+    next_state = _copy_state_with_step(state, "generate_reviewer_questions")
+    safe_input = build_question_generation_input(
+        state["dataset_profile"],
+        state["onboarding_context_summary"],
+        state["gap_assessment"],
+    )
+    next_state["question_generation_input"] = safe_input
+    next_state["artifacts"]["reviewer_questions"] = str(
+        Path(state["output_dir"]) / REVIEWER_QUESTIONS_FILENAME
+    )
+
+    if not state["generate_questions"]:
+        next_state["reviewer_questions"] = empty_question_result(mode="not_requested")
+        next_state["questions_generated"] = False
+        next_state["llm_used"] = False
+        return next_state
+
+    config = LLMConfig(
+        provider=state.get("llm_provider") or "openai",
+        model=state.get("llm_model") or "gpt-4.1-mini",
+        max_question_candidates=state["max_question_candidates"],
+    )
+    candidates = generate_question_candidates(config, safe_input)
+    next_state["reviewer_questions"] = validate_question_candidates(
+        candidates, safe_input, state["max_question_candidates"]
+    )
+    next_state["questions_generated"] = True
+    next_state["llm_used"] = True
+    return next_state
+
+
 def build_report_node(state: WorkflowState) -> WorkflowState:
     """Build the deterministic Markdown onboarding review report."""
 
@@ -120,6 +163,7 @@ def build_report_node(state: WorkflowState) -> WorkflowState:
         state["dataset_profile"],
         state["onboarding_context_summary"],
         state["gap_assessment"],
+        state.get("reviewer_questions"),
         {"artifacts": dict(next_state["artifacts"])},
     )
     next_state["onboarding_review_report"] = report

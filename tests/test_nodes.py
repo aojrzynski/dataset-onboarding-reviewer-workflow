@@ -7,6 +7,7 @@ from dataset_onboarding_reviewer_workflow.nodes import (
     load_context_node,
     load_dataset_node,
     profile_dataset_node,
+    generate_reviewer_questions_node,
     start_workflow_run,
 )
 from dataset_onboarding_reviewer_workflow.state import WorkflowState
@@ -45,6 +46,14 @@ def base_state(
         "context_loaded": False,
         "gaps_assessed": False,
         "report_built": False,
+        "generate_questions": False,
+        "llm_provider": "openai",
+        "llm_model": "gpt-4.1-mini",
+        "max_question_candidates": 8,
+        "question_generation_input": {},
+        "reviewer_questions": {},
+        "questions_generated": False,
+        "llm_used": False,
     }
 
 
@@ -125,11 +134,28 @@ def test_assess_gaps_node_builds_gap_assessment(tmp_path) -> None:
     assert state["artifacts"]["onboarding_gap_assessment"].endswith("onboarding_gap_assessment.json")
 
 
-def test_build_report_node_builds_report_and_records_artifact(tmp_path) -> None:
+def test_generate_reviewer_questions_node_records_not_requested_result(tmp_path) -> None:
     csv_path = tmp_path / "customers.csv"
     write_csv(csv_path)
     state = assess_gaps_node(
         load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+    )
+
+    questioned = generate_reviewer_questions_node(state)
+
+    assert questioned["workflow_steps"][-1] == "generate_reviewer_questions"
+    assert questioned["reviewer_questions"]["mode"] == "not_requested"
+    assert questioned["llm_used"] is False
+    assert questioned["artifacts"]["reviewer_questions"].endswith("reviewer_questions.json")
+
+
+def test_build_report_node_builds_report_and_records_artifact(tmp_path) -> None:
+    csv_path = tmp_path / "customers.csv"
+    write_csv(csv_path)
+    state = generate_reviewer_questions_node(
+        assess_gaps_node(
+            load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+        )
     )
 
     reported = build_report_node(state)
@@ -144,8 +170,10 @@ def test_complete_workflow_run_sets_completion_and_status(tmp_path) -> None:
     csv_path = tmp_path / "customers.csv"
     write_csv(csv_path)
     state = build_report_node(
-        assess_gaps_node(
-            load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+        generate_reviewer_questions_node(
+            assess_gaps_node(
+                load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+            )
         )
     )
 
@@ -157,6 +185,7 @@ def test_complete_workflow_run_sets_completion_and_status(tmp_path) -> None:
         "profile_dataset",
         "load_context",
         "assess_gaps",
+        "generate_reviewer_questions",
         "build_report",
         "complete_workflow_run",
     ]
