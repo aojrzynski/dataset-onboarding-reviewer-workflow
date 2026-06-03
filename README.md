@@ -2,19 +2,25 @@
 
 What do we need to understand before a new dataset is trusted, documented, tested, governed, or passed into downstream engineering work?
 
-Dataset Onboarding Reviewer Workflow is a local-first, framework-based workflow for helping a reviewer organize dataset onboarding work. The long-term tool will profile a dataset, check what context is known or missing, identify onboarding gaps, optionally use an LLM to draft reviewer questions from safe evidence, validate those questions deterministically, and write artifacts for a human decision-maker.
+Dataset Onboarding Reviewer Workflow is a local-first workflow for helping a reviewer organize early dataset onboarding work. The current workflow loads a local CSV/XLSX/XLSM dataset, builds a deterministic aggregate profile, and writes JSON artifacts that a human reviewer can inspect before deciding what additional documentation, tests, governance review, or engineering work may be needed.
 
-This repository is currently a scaffold. It does **not** perform real dataset intake, profiling, context loading, gap assessment, reporting, reviewer-question generation, LLM calls, or reviewer-answer handling yet.
+This repository does **not** approve datasets or claim that a dataset is trusted, governed, compliant, production-ready, or complete. The profile is bounded evidence for review, not a review verdict.
 
-## What PR #1 proves
+## Current workflow
 
-PR #1 proves the first runnable pattern:
+PR #2 implements a linear LangGraph workflow:
 
 ```text
-state -> node -> graph -> CLI -> trace artifact
+START -> start_workflow_run -> load_dataset_node -> profile_dataset_node -> complete_workflow_run -> END
 ```
 
-The command-line tool runs a minimal local LangGraph workflow and writes a deterministic JSON trace. The trace shows that the framework wiring works, that state moved through a sequence of nodes, and that the run was scaffold-only.
+The workflow can load:
+
+- `.csv`
+- `.xlsx`
+- `.xlsm`
+
+It writes a safe aggregate dataset profile. The artifacts include column names and aggregate counts/percentages, but they do **not** include raw rows, sampled records, top values, distinct value lists, first rows, last rows, or example values.
 
 ## Why this problem needs structure
 
@@ -22,10 +28,12 @@ Dataset onboarding usually starts with practical uncertainty:
 
 - What is known about the dataset?
 - What is missing or unclear?
+- What shape does the dataset have?
+- Which columns look like identifiers, dates, measures, categories, or text?
 - What needs human review before downstream teams rely on it?
 - Which artifacts should be written so the next person can understand the review state?
 
-A reviewer needs repeatable evidence, clear gaps, and explicit boundaries. This scaffold is the foundation for that workflow, but it intentionally avoids pretending that a dataset has been reviewed.
+A reviewer needs repeatable evidence, clear boundaries, and artifacts that avoid spreading raw data into review outputs.
 
 ## Why use a workflow graph?
 
@@ -34,22 +42,16 @@ A workflow graph makes the review process explicit:
 - **State** is the shared workflow record.
 - **Nodes** are small deterministic steps.
 - **Edges** define the order of work.
-- **The compiled graph** is run by the CLI.
+- **Business logic** lives in normal Python functions that are easy to test.
 - **Artifacts** are written after the graph completes.
 
-For PR #1, the graph is deliberately linear:
-
-```text
-START -> start_scaffold_run -> record_framework_checkpoint -> complete_scaffold_run -> END
-```
-
-Later PRs can add real intake and assessment steps while keeping business logic in normal Python functions that are easy to test.
+LangGraph is used for orchestration. Dataset loading and profiling logic live outside graph construction in testable modules.
 
 ## Why not just ask an LLM?
 
 An LLM is not a safe source of truth for dataset onboarding. It should not decide whether a dataset is trusted, governed, compliant, production-ready, or complete. It should also not receive raw rows or allow generated text to bypass deterministic validation.
 
-The planned role for any future LLM support is bounded and optional: use safe, deterministic evidence to draft useful reviewer questions, then validate those questions before a human reviewer uses them. Human review remains the final authority.
+There is no LLM integration in PR #2. Any future LLM support should be optional, bounded, based only on safe deterministic evidence, and validated before a human reviewer uses it. Human review remains the final authority.
 
 ## Safety and product boundaries
 
@@ -60,21 +62,17 @@ The workflow must not:
 - make legal, compliance, or privacy verdicts
 - send raw rows to an LLM
 - write raw rows, sampled records, top values, or distinct value lists into artifacts
-- execute arbitrary LLM-generated code
-- let LLM output bypass deterministic validation
-- treat LLM output as authoritative
-- imply that reviewer questions or recommendations are complete
+- execute arbitrary generated code
+- imply that the profile is complete or sufficient for review
 
 The workflow should:
 
 - run locally
 - use deterministic evidence first
-- keep raw data out of prompts and review artifacts
-- make any future LLM role bounded and optional
-- make human review the final authority
-- write clear JSON and Markdown artifacts
-- be well tested
-- include educational comments and docstrings where they help explain the workflow
+- keep raw data out of review artifacts
+- write clear JSON artifacts
+- keep human review as the final authority
+- keep comments and docstrings helpful but not noisy
 
 ## Installation
 
@@ -84,9 +82,11 @@ This project uses Python 3.11 or newer and a `src` package layout.
 python -m pip install -e ".[dev]"
 ```
 
-Runtime dependency:
+Runtime dependencies:
 
 - `langgraph`
+- `pandas`
+- `openpyxl`
 
 Development dependency:
 
@@ -108,39 +108,79 @@ Show version:
 dataset-onboarding-reviewer --version
 ```
 
-Run the scaffold workflow:
+Run the workflow against a CSV dataset:
 
 ```bash
-dataset-onboarding-reviewer --output-dir outputs/demo_run
+dataset-onboarding-reviewer examples/customer_onboarding_sample.csv --output-dir outputs/demo_run
+```
+
+Run the workflow against a specific Excel sheet:
+
+```bash
+dataset-onboarding-reviewer path/to/data.xlsx --sheet Customers --output-dir outputs/demo_run
 ```
 
 Expected completion message:
 
 ```text
-Scaffold workflow completed. Trace written to: outputs/demo_run/onboarding_trace.json
+Dataset onboarding profile completed.
+Profile written to: outputs/demo_run/dataset_profile.json
+Trace written to: outputs/demo_run/onboarding_trace.json
 ```
 
-There is no dataset path argument yet. Dataset intake belongs in a later PR.
+If intake fails, the CLI exits non-zero and writes a clear error message to stderr.
 
 ## Current artifacts
 
-PR #1 writes one JSON artifact:
+A successful run writes two JSON artifacts:
 
 ```text
+outputs/demo_run/dataset_profile.json
 outputs/demo_run/onboarding_trace.json
 ```
 
-The trace includes:
+### `dataset_profile.json`
+
+The dataset profile includes:
+
+- profile version
+- safe dataset metadata summary
+- row count and column count
+- one aggregate profile per column
+- missing, non-null, empty-string, and distinct counts/percentages
+- deterministic candidate role hints such as `id_like`, `date_like`, `measure_like`, `category_like`, `text_like`, or `unknown`
+- dataset-level observations from safe metadata and aggregate counts
+
+The profile does not include raw rows, sampled records, first rows, last rows, top values, distinct value lists, example values, or min/max values.
+
+### `onboarding_trace.json`
+
+The onboarding trace includes:
 
 - workflow name and version
 - run ID
 - start and completion timestamps
 - status
-- scaffold step sequence
+- workflow step sequence
 - artifact paths
-- a scaffold-only note stating that no dataset was loaded, no profiling was performed, and no review decision was made
+- whether dataset loading and profiling completed
+- concise dataset metadata summary
+- a note that no review decision was made
 
-The trace does not include raw data, sampled records, top values, distinct value lists, reviewer questions, reviewer answers, or dataset review decisions.
+The trace does not include the internal dataframe object or duplicate the full dataset profile.
+
+## Current limitations
+
+PR #2 intentionally does not include:
+
+- context YAML loading
+- gap assessment
+- Markdown report generation
+- LLM calls or OpenAI integration
+- reviewer questions
+- reviewer answers
+- safe onboarding payload generation
+- approval, trust, compliance, or readiness verdicts
 
 ## Tests
 
@@ -150,18 +190,18 @@ Run the test suite:
 pytest
 ```
 
-The tests cover package versioning, node state updates, graph execution, JSON trace writing, and CLI behavior.
+The tests cover dataset intake, safe profiling, graph execution, node state updates, JSON artifact writing, package versioning, and CLI behavior.
 
 ## Roadmap
 
 Planned PR sequence:
 
-1. **Repository scaffold and minimal LangGraph run** — implemented here.
-2. **Dataset intake and safe profiling nodes** — add CSV/XLSX/XLSM intake, build a safe aggregate profile, write `dataset_profile.json` and trace metadata. No context or LLM yet.
+1. **Repository scaffold and minimal LangGraph run** — implemented in PR #1.
+2. **Dataset intake and safe profiling nodes** — implemented here; adds CSV/XLSX/XLSM intake, safe aggregate profiling, `dataset_profile.json`, and enriched trace metadata. No context or LLM yet.
 3. **Human-authored onboarding context and gap assessment** — load optional YAML context, summarize known context, assess missing/unclear context deterministically, and write context/gap artifacts.
 4. **Deterministic onboarding review report** — generate a Markdown onboarding review report from profile and gap assessment. No LLM yet.
 5. **Optional bounded LLM reviewer question generation** — generate structured reviewer-question candidates from safe evidence only, validate deterministically, and write accepted/rejected question artifacts.
 6. **Reviewer answers input** — accept optional reviewer answers YAML, summarize answered/unanswered questions, and update the report.
 7. **Documentation, comments, polish, and v1 release prep** — strengthen README/docs, architecture notes, artifact docs, demo workflow, roadmap, comments, and versioning.
 
-Each step should keep local execution, deterministic evidence, and safety boundaries central.
+Each step should keep local execution, deterministic evidence, artifact safety, and human review central.

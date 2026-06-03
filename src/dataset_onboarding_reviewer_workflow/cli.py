@@ -1,12 +1,12 @@
-"""Command-line interface for the scaffold workflow."""
+"""Command-line interface for local dataset intake and profiling."""
 
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from dataset_onboarding_reviewer_workflow import __version__
-
 DEFAULT_OUTPUT_DIR = "outputs/onboarding_run"
 
 
@@ -15,10 +15,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="dataset-onboarding-reviewer",
-        description=(
-            "Run the scaffold-only Dataset Onboarding Reviewer Workflow and "
-            "write a local trace artifact."
-        ),
+        description="Load a local CSV/XLSX/XLSM dataset and write safe aggregate profile artifacts.",
+    )
+    parser.add_argument(
+        "dataset_path",
+        help="Path to the local CSV, XLSX, or XLSM dataset to profile.",
     )
     parser.add_argument(
         "--version",
@@ -28,24 +29,42 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=DEFAULT_OUTPUT_DIR,
-        help=f"Directory for scaffold artifacts. Defaults to {DEFAULT_OUTPUT_DIR}.",
+        help=f"Directory for JSON artifacts. Defaults to {DEFAULT_OUTPUT_DIR}.",
+    )
+    parser.add_argument(
+        "--sheet",
+        default=None,
+        help="Excel sheet name to load for .xlsx or .xlsm datasets.",
     )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the graph and write the onboarding trace artifact."""
+    """Run the graph and write dataset profile plus onboarding trace artifacts."""
 
     parser = build_parser()
     args = parser.parse_args(argv)
 
     from dataset_onboarding_reviewer_workflow.graph import run_workflow
-    from dataset_onboarding_reviewer_workflow.output_writers import write_onboarding_trace
+    from dataset_onboarding_reviewer_workflow.intake import DatasetIntakeError
+    from dataset_onboarding_reviewer_workflow.output_writers import (
+        write_dataset_profile,
+        write_onboarding_trace,
+    )
 
     output_dir = Path(args.output_dir)
-    state = run_workflow(output_dir)
-    trace_path = write_onboarding_trace(output_dir, state)
-    print(f"Scaffold workflow completed. Trace written to: {trace_path}")
+    try:
+        state = run_workflow(args.dataset_path, output_dir, sheet=args.sheet)
+        profile_path = write_dataset_profile(output_dir, state["dataset_profile"])
+        state["artifacts"]["dataset_profile"] = str(profile_path)
+        trace_path = write_onboarding_trace(output_dir, state)
+    except DatasetIntakeError as exc:
+        print(f"Dataset intake failed: {exc}", file=sys.stderr)
+        return 2
+
+    print("Dataset onboarding profile completed.")
+    print(f"Profile written to: {profile_path}")
+    print(f"Trace written to: {trace_path}")
     return 0
 
 
