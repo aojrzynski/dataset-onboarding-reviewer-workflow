@@ -13,6 +13,7 @@ def loaded_dataset() -> LoadedDataset:
             "customer_id": ["C001", "C002", "C003", "C004"],
             "signup_date": ["2025-01-01", "2025-01-02", "2025-01-03", None],
             "region": ["North", "South", "North", "East"],
+            "account_status": ["active", "active", "paused", "closed"],
             "monthly_spend": [10.5, 20.0, None, 5.25],
             "notes": ["Needs onboarding", "", "Prefers email", "Longer free text note"],
         }
@@ -24,8 +25,8 @@ def loaded_dataset() -> LoadedDataset:
             "file_name": "customer_onboarding_sample.csv",
             "file_extension": ".csv",
             "file_size_bytes": 123,
-            "row_count": 4,
-            "column_count": 5,
+            "row_count": len(dataframe),
+            "column_count": len(dataframe.columns),
             "column_names": list(dataframe.columns),
         },
     )
@@ -39,8 +40,8 @@ def test_build_safe_dataset_profile_counts_rows_columns_and_column_profiles() ->
     profile = build_safe_dataset_profile(loaded_dataset())
 
     assert profile["row_count"] == 4
-    assert profile["column_count"] == 5
-    assert len(profile["columns"]) == 5
+    assert profile["column_count"] == 6
+    assert len(profile["columns"]) == 6
     assert profile["dataset_metadata"]["file_name"] == "customer_onboarding_sample.csv"
 
 
@@ -52,6 +53,10 @@ def test_build_safe_dataset_profile_identifies_deterministic_candidate_roles() -
     assert "date_like" in columns["signup_date"]["candidate_roles"]
     assert "measure_like" in columns["monthly_spend"]["candidate_roles"]
     assert "category_like" in columns["region"]["candidate_roles"]
+    assert "category_like" in columns["account_status"]["candidate_roles"]
+    assert "category_like" not in columns["customer_id"]["candidate_roles"]
+    assert "category_like" not in columns["signup_date"]["candidate_roles"]
+    assert "category_like" not in columns["monthly_spend"]["candidate_roles"]
 
 
 def test_build_safe_dataset_profile_includes_aggregate_counts() -> None:

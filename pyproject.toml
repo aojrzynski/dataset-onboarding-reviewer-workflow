@@ -16,6 +16,7 @@ dependencies = [
   "langgraph",
   "pandas",
   "openpyxl",
+  "PyYAML",
 ]
 
 [project.optional-dependencies]

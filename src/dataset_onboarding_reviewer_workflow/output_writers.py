@@ -10,9 +10,12 @@ from dataset_onboarding_reviewer_workflow.state import WorkflowState
 
 TRACE_FILENAME = "onboarding_trace.json"
 DATASET_PROFILE_FILENAME = "dataset_profile.json"
+CONTEXT_SUMMARY_FILENAME = "onboarding_context_summary.json"
+GAP_ASSESSMENT_FILENAME = "onboarding_gap_assessment.json"
 NO_REVIEW_DECISION_NOTE = (
-    "Intake/profile run only: a dataset was loaded and a safe aggregate profile "
-    "was built, but no review decision was made. Human review remains required."
+    "Local onboarding artifact run only: a dataset was loaded, a safe aggregate profile "
+    "was built, optional reviewer-provided context was summarized, and deterministic gaps "
+    "were assessed, but no review decision was made. Human review remains required."
 )
 
 
@@ -39,6 +42,18 @@ def write_dataset_profile(output_dir: Path | str, profile: dict[str, Any]) -> Pa
     return write_json_artifact(output_dir, DATASET_PROFILE_FILENAME, profile)
 
 
+def write_context_summary(output_dir: Path | str, context_summary: dict[str, Any]) -> Path:
+    """Write the normalized onboarding context summary artifact."""
+
+    return write_json_artifact(output_dir, CONTEXT_SUMMARY_FILENAME, context_summary)
+
+
+def write_gap_assessment(output_dir: Path | str, gap_assessment: dict[str, Any]) -> Path:
+    """Write the deterministic onboarding gap assessment artifact."""
+
+    return write_json_artifact(output_dir, GAP_ASSESSMENT_FILENAME, gap_assessment)
+
+
 def _trace_dataset_metadata_summary(state: WorkflowState) -> dict[str, Any]:
     metadata = state["dataset_metadata"]
     summary_keys = [
@@ -55,11 +70,38 @@ def _trace_dataset_metadata_summary(state: WorkflowState) -> dict[str, Any]:
     return summary
 
 
+def _context_counts(state: WorkflowState) -> dict[str, int]:
+    context_summary = state.get("onboarding_context_summary", {})
+    return {
+        "known_context_field_count": len(context_summary.get("known_fields", [])),
+        "missing_context_field_count": len(context_summary.get("missing_context_fields", [])),
+        "unknown_context_field_count": len(context_summary.get("unknown_fields", [])),
+    }
+
+
+def _gap_counts(state: WorkflowState) -> dict[str, int]:
+    gap_assessment = state.get("gap_assessment", {})
+    gap_summary = gap_assessment.get("summary", {}) if isinstance(gap_assessment, dict) else {}
+    gaps = gap_assessment.get("gaps", []) if isinstance(gap_assessment, dict) else []
+    return {
+        "gap_count": len(gaps) if isinstance(gaps, list) else 0,
+        "high_priority_gap_count": int(gap_summary.get("high_priority_gap_count", 0)),
+        "medium_priority_gap_count": int(gap_summary.get("medium_priority_gap_count", 0)),
+        "low_priority_gap_count": int(gap_summary.get("low_priority_gap_count", 0)),
+    }
+
+
 def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
-    """Build trace metadata without raw rows or internal dataframe objects."""
+    """Build trace metadata without raw rows or full profile/context/gap payloads."""
 
     artifacts = dict(state["artifacts"])
     artifacts.setdefault("dataset_profile", str(Path(state["output_dir"]) / DATASET_PROFILE_FILENAME))
+    artifacts.setdefault(
+        "onboarding_context_summary", str(Path(state["output_dir"]) / CONTEXT_SUMMARY_FILENAME)
+    )
+    artifacts.setdefault(
+        "onboarding_gap_assessment", str(Path(state["output_dir"]) / GAP_ASSESSMENT_FILENAME)
+    )
     artifacts.setdefault("onboarding_trace", str(Path(state["output_dir"]) / TRACE_FILENAME))
     return {
         "workflow_name": state["workflow_name"],
@@ -70,17 +112,25 @@ def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
         "status": state["status"],
         "workflow_steps": list(state["workflow_steps"]),
         "artifacts": artifacts,
-        "run_type": "dataset_intake_and_safe_profile",
+        "run_type": "dataset_onboarding_context_gap_assessment",
         "dataset_loaded": state["dataset_loaded"],
         "profile_built": state["profile_built"],
+        "context_loaded": state["context_loaded"],
+        "context_provided": state["context_provided"],
+        "gaps_assessed": state["gaps_assessed"],
         "dataset_metadata_summary": _trace_dataset_metadata_summary(state),
         "profile_artifact_path": artifacts["dataset_profile"],
+        "context_summary_artifact_path": artifacts["onboarding_context_summary"],
+        "gap_assessment_artifact_path": artifacts["onboarding_gap_assessment"],
+        "trace_artifact_path": artifacts["onboarding_trace"],
+        "context_counts": _context_counts(state),
+        "gap_counts": _gap_counts(state),
         "review_decision_made": False,
         "note": NO_REVIEW_DECISION_NOTE,
     }
 
 
 def write_onboarding_trace(output_dir: Path | str, state: WorkflowState) -> Path:
-    """Write the onboarding trace artifact for the completed intake/profile run."""
+    """Write the onboarding trace artifact for the completed workflow run."""
 
     return write_json_artifact(output_dir, TRACE_FILENAME, onboarding_trace_payload(state))

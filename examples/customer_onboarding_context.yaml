@@ -1,0 +1,22 @@
+dataset_name: Customer onboarding sample
+dataset_owner: Customer Operations
+dataset_purpose: Supports review of customer onboarding activity for operational follow-up.
+expected_grain: One row per customer onboarding record.
+known_primary_key: customer_id
+known_date_fields:
+  - signup_date
+  - last_contact_date
+known_measure_fields:
+  - monthly_spend
+known_category_fields:
+  - region
+  - account_status
+fields_to_ignore: []
+known_downstream_uses:
+  - Operational onboarding review
+known_quality_concerns:
+  - Some customers may not have a last contact date.
+refresh_frequency: Monthly
+source_system: Synthetic example source
+business_contact: Customer Operations lead
+technical_contact: Data platform contact
