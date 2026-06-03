@@ -1,0 +1,6 @@
+customer_id,signup_date,region,account_status,monthly_spend,last_contact_date,notes
+CUST-001,2025-01-15,North,active,125.50,2025-03-02,Prefers email follow-up
+CUST-002,2025-01-22,South,active,88.00,2025-03-05,
+CUST-003,2025-02-03,West,paused,0.00,2025-02-20,Awaiting updated billing contact
+CUST-004,2025-02-14,North,active,210.75,2025-03-07,Seasonal account
+CUST-005,2025-02-28,East,closed,45.20,,Closed after trial period

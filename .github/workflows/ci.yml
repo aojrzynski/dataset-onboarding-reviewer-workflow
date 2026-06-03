@@ -29,5 +29,5 @@ jobs:
       - name: CLI version smoke test
         run: dataset-onboarding-reviewer --version
 
-      - name: CLI scaffold run smoke test
-        run: dataset-onboarding-reviewer --output-dir outputs/ci_smoke
+      - name: CLI intake/profile run smoke test
+        run: dataset-onboarding-reviewer examples/customer_onboarding_sample.csv --output-dir outputs/ci_smoke
