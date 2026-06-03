@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataset_onboarding_reviewer_workflow.nodes import (
     assess_gaps_node,
+    build_report_node,
     complete_workflow_run,
     load_context_node,
     load_dataset_node,
@@ -40,8 +41,10 @@ def base_state(
         "onboarding_context": {},
         "onboarding_context_summary": {},
         "gap_assessment": {},
+        "onboarding_review_report": "",
         "context_loaded": False,
         "gaps_assessed": False,
+        "report_built": False,
     }
 
 
@@ -122,11 +125,28 @@ def test_assess_gaps_node_builds_gap_assessment(tmp_path) -> None:
     assert state["artifacts"]["onboarding_gap_assessment"].endswith("onboarding_gap_assessment.json")
 
 
-def test_complete_workflow_run_sets_completion_and_status(tmp_path) -> None:
+def test_build_report_node_builds_report_and_records_artifact(tmp_path) -> None:
     csv_path = tmp_path / "customers.csv"
     write_csv(csv_path)
     state = assess_gaps_node(
         load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+    )
+
+    reported = build_report_node(state)
+
+    assert reported["workflow_steps"][-1] == "build_report"
+    assert reported["report_built"] is True
+    assert "# Dataset Onboarding Review Report" in reported["onboarding_review_report"]
+    assert reported["artifacts"]["onboarding_review_report"].endswith("onboarding_review_report.md")
+
+
+def test_complete_workflow_run_sets_completion_and_status(tmp_path) -> None:
+    csv_path = tmp_path / "customers.csv"
+    write_csv(csv_path)
+    state = build_report_node(
+        assess_gaps_node(
+            load_context_node(profile_dataset_node(load_dataset_node(start_workflow_run(base_state(str(csv_path))))))
+        )
     )
 
     completed = complete_workflow_run(state)
@@ -137,6 +157,7 @@ def test_complete_workflow_run_sets_completion_and_status(tmp_path) -> None:
         "profile_dataset",
         "load_context",
         "assess_gaps",
+        "build_report",
         "complete_workflow_run",
     ]
     assert completed["completed_at_utc"] is not None

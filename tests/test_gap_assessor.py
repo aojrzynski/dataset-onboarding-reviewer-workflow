@@ -139,3 +139,22 @@ def test_suggested_next_steps_are_review_oriented() -> None:
     assert "review" in next_steps
     assert "decide" not in next_steps
     assert "approve" not in next_steps
+
+
+def test_fields_to_ignore_missing_reference_produces_low_priority_gap(tmp_path) -> None:
+    context_path = tmp_path / "context.yaml"
+    context_path.write_text(
+        """
+fields_to_ignore:
+  - missing_internal_note
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assessment = assessment_for_context(load_onboarding_context(context_path))
+
+    gap = next(gap for gap in assessment["gaps"] if gap["gap_id"] == "fields_to_ignore_not_found")
+    assert gap["priority"] == "low"
+    assert gap["gap_type"] == "field_reference"
+    assert gap["related_context_fields"] == ["fields_to_ignore"]
+    assert gap["related_dataset_fields"] == ["missing_internal_note"]

@@ -12,6 +12,7 @@ TRACE_FILENAME = "onboarding_trace.json"
 DATASET_PROFILE_FILENAME = "dataset_profile.json"
 CONTEXT_SUMMARY_FILENAME = "onboarding_context_summary.json"
 GAP_ASSESSMENT_FILENAME = "onboarding_gap_assessment.json"
+REVIEW_REPORT_FILENAME = "onboarding_review_report.md"
 NO_REVIEW_DECISION_NOTE = (
     "Local onboarding artifact run only: a dataset was loaded, a safe aggregate profile "
     "was built, optional reviewer-provided context was summarized, and deterministic gaps "
@@ -52,6 +53,21 @@ def write_gap_assessment(output_dir: Path | str, gap_assessment: dict[str, Any])
     """Write the deterministic onboarding gap assessment artifact."""
 
     return write_json_artifact(output_dir, GAP_ASSESSMENT_FILENAME, gap_assessment)
+
+
+def write_markdown_artifact(output_dir: Path | str, filename: str, content: str) -> Path:
+    """Write a Markdown artifact with UTF-8 encoding and a trailing newline."""
+
+    output_path = ensure_output_dir(output_dir)
+    artifact_path = output_path / filename
+    artifact_path.write_text(content.rstrip() + "\n", encoding="utf-8")
+    return artifact_path
+
+
+def write_onboarding_review_report(output_dir: Path | str, report_markdown: str) -> Path:
+    """Write the deterministic onboarding review report artifact."""
+
+    return write_markdown_artifact(output_dir, REVIEW_REPORT_FILENAME, report_markdown)
 
 
 def _trace_dataset_metadata_summary(state: WorkflowState) -> dict[str, Any]:
@@ -102,6 +118,9 @@ def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
     artifacts.setdefault(
         "onboarding_gap_assessment", str(Path(state["output_dir"]) / GAP_ASSESSMENT_FILENAME)
     )
+    artifacts.setdefault(
+        "onboarding_review_report", str(Path(state["output_dir"]) / REVIEW_REPORT_FILENAME)
+    )
     artifacts.setdefault("onboarding_trace", str(Path(state["output_dir"]) / TRACE_FILENAME))
     return {
         "workflow_name": state["workflow_name"],
@@ -118,10 +137,12 @@ def onboarding_trace_payload(state: WorkflowState) -> dict[str, Any]:
         "context_loaded": state["context_loaded"],
         "context_provided": state["context_provided"],
         "gaps_assessed": state["gaps_assessed"],
+        "report_built": state.get("report_built", False),
         "dataset_metadata_summary": _trace_dataset_metadata_summary(state),
         "profile_artifact_path": artifacts["dataset_profile"],
         "context_summary_artifact_path": artifacts["onboarding_context_summary"],
         "gap_assessment_artifact_path": artifacts["onboarding_gap_assessment"],
+        "review_report_artifact_path": artifacts["onboarding_review_report"],
         "trace_artifact_path": artifacts["onboarding_trace"],
         "context_counts": _context_counts(state),
         "gap_counts": _gap_counts(state),

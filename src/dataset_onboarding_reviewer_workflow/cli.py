@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="dataset-onboarding-reviewer",
         description=(
             "Load a local CSV/XLSX/XLSM dataset and write safe aggregate profile, "
-            "context summary, gap assessment, and trace artifacts."
+            "context summary, gap assessment, Markdown report, and trace artifacts."
         ),
     )
     parser.add_argument(
@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=DEFAULT_OUTPUT_DIR,
-        help=f"Directory for JSON artifacts. Defaults to {DEFAULT_OUTPUT_DIR}.",
+        help=f"Directory for JSON and Markdown artifacts. Defaults to {DEFAULT_OUTPUT_DIR}.",
     )
     parser.add_argument(
         "--sheet",
@@ -61,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
         write_context_summary,
         write_dataset_profile,
         write_gap_assessment,
+        write_onboarding_review_report,
         write_onboarding_trace,
     )
 
@@ -78,6 +79,10 @@ def main(argv: list[str] | None = None) -> int:
         state["artifacts"]["onboarding_context_summary"] = str(context_summary_path)
         gap_assessment_path = write_gap_assessment(output_dir, state["gap_assessment"])
         state["artifacts"]["onboarding_gap_assessment"] = str(gap_assessment_path)
+        review_report_path = write_onboarding_review_report(
+            output_dir, state["onboarding_review_report"]
+        )
+        state["artifacts"]["onboarding_review_report"] = str(review_report_path)
         trace_path = write_onboarding_trace(output_dir, state)
     except DatasetIntakeError as exc:
         print(f"Dataset intake failed: {exc}", file=sys.stderr)
@@ -90,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Profile written to: {profile_path}")
     print(f"Context summary written to: {context_summary_path}")
     print(f"Gap assessment written to: {gap_assessment_path}")
+    print(f"Review report written to: {review_report_path}")
     print(f"Trace written to: {trace_path}")
     return 0
 

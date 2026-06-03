@@ -15,9 +15,11 @@ from dataset_onboarding_reviewer_workflow.output_writers import (
     CONTEXT_SUMMARY_FILENAME,
     DATASET_PROFILE_FILENAME,
     GAP_ASSESSMENT_FILENAME,
+    REVIEW_REPORT_FILENAME,
     TRACE_FILENAME,
 )
 from dataset_onboarding_reviewer_workflow.profiling import build_safe_dataset_profile
+from dataset_onboarding_reviewer_workflow.report_builder import build_onboarding_review_report
 from dataset_onboarding_reviewer_workflow.state import WorkflowState
 
 
@@ -38,6 +40,7 @@ def _copy_state_with_step(state: WorkflowState, step_name: str) -> WorkflowState
     next_state["onboarding_context"] = dict(state.get("onboarding_context", {}))
     next_state["onboarding_context_summary"] = dict(state.get("onboarding_context_summary", {}))
     next_state["gap_assessment"] = dict(state.get("gap_assessment", {}))
+    next_state["onboarding_review_report"] = str(state.get("onboarding_review_report", ""))
     return next_state
 
 
@@ -102,6 +105,25 @@ def assess_gaps_node(state: WorkflowState) -> WorkflowState:
     next_state["artifacts"]["onboarding_gap_assessment"] = str(
         Path(state["output_dir"]) / GAP_ASSESSMENT_FILENAME
     )
+    return next_state
+
+
+def build_report_node(state: WorkflowState) -> WorkflowState:
+    """Build the deterministic Markdown onboarding review report."""
+
+    next_state = _copy_state_with_step(state, "build_report")
+    next_state["artifacts"]["onboarding_review_report"] = str(
+        Path(state["output_dir"]) / REVIEW_REPORT_FILENAME
+    )
+    next_state["artifacts"]["onboarding_trace"] = str(Path(state["output_dir"]) / TRACE_FILENAME)
+    report = build_onboarding_review_report(
+        state["dataset_profile"],
+        state["onboarding_context_summary"],
+        state["gap_assessment"],
+        {"artifacts": dict(next_state["artifacts"])},
+    )
+    next_state["onboarding_review_report"] = report
+    next_state["report_built"] = True
     return next_state
 
 

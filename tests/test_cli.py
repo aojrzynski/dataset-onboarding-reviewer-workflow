@@ -31,10 +31,11 @@ def test_cli_version_exits_zero_and_includes_version() -> None:
     assert "0.1.0" in result.stdout
 
 
-def assert_four_artifacts(output_dir) -> None:
+def assert_five_artifacts(output_dir) -> None:
     assert (output_dir / "dataset_profile.json").exists()
     assert (output_dir / "onboarding_context_summary.json").exists()
     assert (output_dir / "onboarding_gap_assessment.json").exists()
+    assert (output_dir / "onboarding_review_report.md").exists()
     assert (output_dir / "onboarding_trace.json").exists()
 
 
@@ -44,7 +45,7 @@ def test_cli_run_without_context_creates_all_artifacts(tmp_path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert "Dataset onboarding review artifacts completed." in result.stdout
-    assert_four_artifacts(output_dir)
+    assert_five_artifacts(output_dir)
     trace_payload = json.loads((output_dir / "onboarding_trace.json").read_text(encoding="utf-8"))
     assert trace_payload["status"] == "completed"
     assert trace_payload["dataset_loaded"] is True
@@ -52,6 +53,7 @@ def test_cli_run_without_context_creates_all_artifacts(tmp_path) -> None:
     assert trace_payload["context_loaded"] is True
     assert trace_payload["context_provided"] is False
     assert trace_payload["gaps_assessed"] is True
+    assert trace_payload["report_built"] is True
 
 
 def test_cli_run_with_example_context_creates_all_artifacts(tmp_path) -> None:
@@ -67,7 +69,11 @@ def test_cli_run_with_example_context_creates_all_artifacts(tmp_path) -> None:
     assert result.returncode == 0, result.stderr
     assert "Context summary written to:" in result.stdout
     assert "Gap assessment written to:" in result.stdout
-    assert_four_artifacts(output_dir)
+    assert "Review report written to:" in result.stdout
+    assert_five_artifacts(output_dir)
+    report = (output_dir / "onboarding_review_report.md").read_text(encoding="utf-8")
+    assert "# Dataset Onboarding Review Report" in report
+    assert "## Gap summary" in report
     summary_payload = json.loads(
         (output_dir / "onboarding_context_summary.json").read_text(encoding="utf-8")
     )

@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 from dataset_onboarding_reviewer_workflow import __version__
 from dataset_onboarding_reviewer_workflow.nodes import (
     assess_gaps_node,
+    build_report_node,
     complete_workflow_run,
     load_context_node,
     load_dataset_node,
@@ -26,12 +27,13 @@ EXPECTED_WORKFLOW_STEPS = [
     "profile_dataset",
     "load_context",
     "assess_gaps",
+    "build_report",
     "complete_workflow_run",
 ]
 
 
 def build_graph():
-    """Build the deterministic LangGraph workflow for PR #3.
+    """Build the deterministic LangGraph workflow for PR #4.
 
     State is the shared workflow record, nodes are deterministic steps, and
     edges define sequencing. Dataset intake, context handling, profiling, and
@@ -45,6 +47,7 @@ def build_graph():
     graph.add_node("profile_dataset_node", profile_dataset_node)
     graph.add_node("load_context_node", load_context_node)
     graph.add_node("assess_gaps_node", assess_gaps_node)
+    graph.add_node("build_report_node", build_report_node)
     graph.add_node("complete_workflow_run", complete_workflow_run)
 
     graph.add_edge(START, "start_workflow_run")
@@ -52,7 +55,8 @@ def build_graph():
     graph.add_edge("load_dataset_node", "profile_dataset_node")
     graph.add_edge("profile_dataset_node", "load_context_node")
     graph.add_edge("load_context_node", "assess_gaps_node")
-    graph.add_edge("assess_gaps_node", "complete_workflow_run")
+    graph.add_edge("assess_gaps_node", "build_report_node")
+    graph.add_edge("build_report_node", "complete_workflow_run")
     graph.add_edge("complete_workflow_run", END)
 
     return graph.compile()
@@ -88,8 +92,10 @@ def initial_state(
         "onboarding_context": {},
         "onboarding_context_summary": {},
         "gap_assessment": {},
+        "onboarding_review_report": "",
         "context_loaded": False,
         "gaps_assessed": False,
+        "report_built": False,
     }
 
 

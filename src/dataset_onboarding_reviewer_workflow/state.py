@@ -36,6 +36,8 @@ class WorkflowState(TypedDict):
     onboarding_context: dict[str, Any]
     onboarding_context_summary: dict[str, Any]
     gap_assessment: dict[str, Any]
+    onboarding_review_report: str
     context_loaded: bool
     gaps_assessed: bool
+    report_built: bool
     loaded_dataset: NotRequired[LoadedDataset]

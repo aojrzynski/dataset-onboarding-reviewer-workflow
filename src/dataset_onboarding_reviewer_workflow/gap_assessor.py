@@ -197,6 +197,20 @@ def assess_onboarding_gaps(
         if missing_for_field:
             _add_gap(gaps, gap_id, "field_reference", "medium", message, [context_field], missing_for_field)
 
+    missing_fields_to_ignore = [
+        field for field in _context_list(normalized_context, "fields_to_ignore") if field not in column_set
+    ]
+    if missing_fields_to_ignore:
+        _add_gap(
+            gaps,
+            "fields_to_ignore_not_found",
+            "field_reference",
+            "low",
+            "Fields to ignore reference fields that are not present in the dataset profile columns.",
+            ["fields_to_ignore"],
+            missing_fields_to_ignore,
+        )
+
     if "known_quality_concerns" in missing_context_fields:
         _add_gap(
             gaps,
