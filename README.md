@@ -2,130 +2,82 @@
 
 What do we need to understand before a new dataset is trusted, documented, tested, governed, or passed into downstream engineering work?
 
-Dataset Onboarding Reviewer Workflow is a local-first workflow for preparing dataset onboarding review artifacts from safe, deterministic evidence. It loads a local dataset, builds an aggregate profile, optionally summarizes human-authored onboarding context YAML, assesses deterministic context and field-reference gaps, optionally generates bounded reviewer-question candidates with an LLM when explicitly requested, optionally summarizes human-authored reviewer answers YAML, and writes JSON plus Markdown artifacts for human review.
+Dataset Onboarding Reviewer Workflow is a local-first workflow that turns a local CSV/XLSX/XLSM dataset into safe review artifacts. It builds an aggregate dataset profile, summarizes optional human-authored onboarding context, assesses deterministic onboarding gaps, optionally generates bounded reviewer-question candidates, summarizes optional human-authored reviewer answers, and writes JSON plus Markdown artifacts for human review.
 
 The workflow does not approve datasets, make legal/compliance/privacy decisions, or decide that a dataset is ready for downstream use. Human review remains the final authority.
 
-## What the workflow does today
+## The problem
 
-The current workflow:
+New datasets often arrive before the review team has enough shared context. A file may have useful columns, but reviewers still need to understand ownership, purpose, grain, expected keys, date fields, measures, categories, refresh patterns, known quality concerns, and downstream use.
 
-1. loads a local CSV, XLSX, or XLSM dataset
-2. builds a safe aggregate profile without raw rows or sampled records
-3. optionally loads reviewer-provided onboarding context YAML
-4. summarizes known, missing, and unknown context fields
-5. checks context field references against profiled column names
-6. assesses deterministic onboarding gaps for review
-7. builds a safe question-generation input from deterministic artifacts
-8. optionally calls an LLM only when `--generate-questions` is provided
-9. deterministically validates LLM-generated reviewer-question candidates
-10. separates accepted and rejected question candidates in JSON
-11. optionally loads human-authored reviewer answers YAML
-12. summarizes answers against accepted reviewer question IDs where possible
-13. builds a Markdown onboarding review report
-14. writes a trace of the run and artifact locations
+The hard part is not only profiling the file. The hard part is separating what is known from what is missing or unresolved without exposing raw rows unnecessarily or allowing generated text to become a decision.
 
-Human-authored context and reviewer answers are treated as reviewer-provided input. They are useful evidence, but they are not a source of automatic approval or a substitute for review. Answers can be unmatched when no accepted reviewer question with the same ID exists, and unanswered accepted questions are captured for follow-up.
+This project focuses on review preparation. It helps reviewers see the evidence and open questions before documentation, testing, governance, or downstream engineering work proceeds.
 
-## Why use a workflow graph?
+## What this project does
 
-A workflow graph makes the review process explicit:
+A normal run can:
 
-- **State** is the shared workflow record.
-- **Nodes** are small steps with bounded responsibilities.
-- **Edges** define the order of work.
-- **Business logic** lives in normal Python functions that are easy to test.
-- **Artifacts** are written after the graph completes.
+1. load a local CSV, XLSX, or XLSM dataset;
+2. build a safe aggregate profile without raw rows or sampled records;
+3. optionally load human-authored onboarding context YAML;
+4. summarize known, missing, and unknown context fields;
+5. check context field references against profiled column names;
+6. assess deterministic onboarding gaps;
+7. write `reviewer_questions.json` in `not_requested` mode by default;
+8. optionally generate reviewer-question candidates with an LLM when explicitly requested;
+9. deterministically validate any generated question candidates;
+10. optionally load human-authored reviewer answers YAML;
+11. summarize matched, unmatched, and unanswered reviewer answers;
+12. build a deterministic Markdown review report; and
+13. write a trace with run metadata, counts, and artifact paths.
 
-LangGraph is used for orchestration. Dataset loading, profiling, context loading, gap assessment, question input building, LLM invocation isolation, question validation, report building, and output writing live outside graph construction in testable modules.
+The output is review material, not an approval packet. Profiles, gap assessments, generated questions, reviewer answers, reports, and traces are not complete or sufficient by themselves.
+
+## Why deterministic evidence matters
+
+Dataset onboarding needs evidence that is predictable and easy to inspect. This workflow uses deterministic processing first:
+
+- local file intake;
+- safe aggregate profiling;
+- context normalization;
+- field-reference checks;
+- gap assessment rules;
+- LLM candidate validation when optional generation is enabled;
+- reviewer answer matching; and
+- artifact writing.
+
+The profile includes aggregate counts and column names, but it does not write raw rows, sampled records, top values, distinct value lists, first rows, last rows, or raw value examples into artifacts.
 
 ## Why not just ask an LLM?
 
-An LLM is not a safe source of truth for dataset onboarding. It must not decide whether a dataset is trusted, governed, compliant, production-ready, complete, or suitable for downstream use. It must not receive raw rows, and generated text must not bypass deterministic validation.
+An LLM is not a source of truth for dataset onboarding. It must not decide whether a dataset is trusted, governed, compliant, production-ready, complete, or suitable for downstream use.
 
-LLM reviewer-question generation is optional and bounded. By default, the workflow does not call an LLM. When `--generate-questions` is explicitly provided, the prompt is built from safe deterministic evidence only, raw rows are never sent, and all returned question candidates are validated before they are accepted into artifacts. Accepted questions are still candidates only; they are not authoritative, complete, or sufficient for review.
+By default, this workflow does not call an LLM and does not require OpenAI, an API key, or network access. Optional reviewer-question generation runs only when `--generate-questions` is provided. When enabled, the LLM receives safe deterministic evidence only, never raw dataset rows. Returned text is treated as candidate questions and must pass deterministic validation before it appears as accepted candidates.
 
-## Safety and product boundaries
+Accepted questions are still candidates only. They are not authoritative, complete, or sufficient for review.
 
-The workflow must not:
+## Why this is an agent
 
-- approve datasets
-- claim a dataset is trusted, governed, compliant, production-ready, or complete
-- make legal, compliance, privacy, or production-readiness verdicts
-- send raw rows to an LLM
-- write raw rows, sampled records, top values, or distinct value lists into artifacts
-- execute arbitrary generated code
-- let LLM output bypass deterministic validation
-- treat LLM output as authoritative
-- treat reviewer answers as proof of approval or completeness
-- imply that reviewer questions, reviewer answers, profiles, gap assessments, or reports are complete or sufficient for review
+The project uses LangGraph to make the review workflow explicit:
 
-The workflow should:
+- state holds the shared workflow record;
+- graph edges define stage order;
+- nodes orchestrate each stage;
+- business logic stays in normal testable modules; and
+- artifacts are written after the workflow state is built.
 
-- run locally by default
-- use deterministic evidence first
-- keep raw data out of prompts and review artifacts
-- use human-authored context and answers as reviewer-provided input, not as a source of automatic approval
-- make any LLM role optional, bounded, and support-only
-- validate LLM output deterministically
-- write clear JSON and Markdown artifacts
-- keep human review as the final authority
-- keep comments and docstrings helpful but not noisy
+The graph is useful because dataset onboarding is a sequence of bounded steps, not a single prompt. The deterministic path remains the default path.
 
-## Installation
+## Quick start
 
-This project uses Python 3.11 or newer and a `src` package layout.
+Install the project with development dependencies:
 
 ```bash
 python -m pip install -e ".[dev]"
 ```
 
-Runtime dependencies:
-
-- `langgraph`
-- `pandas`
-- `openpyxl`
-- `PyYAML`
-
-Development dependency:
-
-- `pytest`
-
-Optional LLM dependency:
-
-```bash
-python -m pip install -e ".[dev,llm]"
-```
-
-The `llm` extra installs:
-
-- `openai`
-
-OpenAI is not a required runtime dependency. Normal deterministic workflow runs do not require OpenAI, an API key, LangChain LLM packages, LangSmith, deployment, streaming, memory stores, MCP, A2A, or external services.
-
-## CLI usage
-
-Show help:
-
-```bash
-dataset-onboarding-reviewer --help
-```
-
-Show version:
-
-```bash
-dataset-onboarding-reviewer --version
-```
-
-Run the normal deterministic workflow with human-authored onboarding context:
-
-```bash
-dataset-onboarding-reviewer examples/customer_onboarding_sample.csv \
-  --context examples/customer_onboarding_context.yaml \
-  --output-dir outputs/demo_run
-```
-
-Run with human-authored reviewer answers:
+Run the recommended deterministic example with human-authored context and reviewer answers:
 
 ```bash
 dataset-onboarding-reviewer examples/customer_onboarding_sample.csv \
@@ -134,102 +86,57 @@ dataset-onboarding-reviewer examples/customer_onboarding_sample.csv \
   --output-dir outputs/demo_run
 ```
 
-Reviewer answers are matched to accepted reviewer question IDs where possible. In a default deterministic run, reviewer-question generation is not requested, so the example `q_001` and `q_002` answers are usually reported as unmatched.
+This command does not require an API key. It writes the seven standard artifacts under `outputs/demo_run/`.
 
-Run the workflow against a CSV dataset without onboarding context or answers:
-
-```bash
-dataset-onboarding-reviewer examples/customer_onboarding_sample.csv --output-dir outputs/demo_run
-```
-
-Run the workflow against a specific Excel sheet:
+If the console script has not been installed yet, the same workflow can be run with `python -m`:
 
 ```bash
-dataset-onboarding-reviewer path/to/data.xlsx --sheet Customers --output-dir outputs/demo_run
+python -m dataset_onboarding_reviewer_workflow.cli examples/customer_onboarding_sample.csv \
+  --context examples/customer_onboarding_context.yaml \
+  --answers examples/customer_reviewer_answers.yaml \
+  --output-dir outputs/demo_run
 ```
 
-Run optional LLM reviewer-question generation:
+## Example commands
+
+Dataset only:
+
+```bash
+dataset-onboarding-reviewer examples/customer_onboarding_sample.csv \
+  --output-dir outputs/dataset_only
+```
+
+Dataset with human-authored onboarding context:
+
+```bash
+dataset-onboarding-reviewer examples/customer_onboarding_sample.csv \
+  --context examples/customer_onboarding_context.yaml \
+  --output-dir outputs/with_context
+```
+
+Dataset with context and human-authored reviewer answers:
+
+```bash
+dataset-onboarding-reviewer examples/customer_onboarding_sample.csv \
+  --context examples/customer_onboarding_context.yaml \
+  --answers examples/customer_reviewer_answers.yaml \
+  --output-dir outputs/with_answers
+```
+
+Optional LLM reviewer-question generation requires the `llm` extra, `OPENAI_API_KEY`, and an explicit flag:
 
 ```bash
 python -m pip install -e ".[dev,llm]"
-
+export OPENAI_API_KEY="..."
 dataset-onboarding-reviewer examples/customer_onboarding_sample.csv \
   --context examples/customer_onboarding_context.yaml \
   --generate-questions \
-  --llm-provider openai \
-  --llm-model gpt-4.1-mini \
-  --max-question-candidates 8 \
-  --answers examples/customer_reviewer_answers.yaml \
-  --output-dir outputs/demo_run
+  --output-dir outputs/with_llm_questions
 ```
 
-For OpenAI-backed question generation, `OPENAI_API_KEY` is required only when `--generate-questions` is used with `--llm-provider openai`. The CLI does not print secrets or prompts.
+More copy-paste commands, including `python -m` variants and Excel examples, are in [docs/example_commands.md](docs/example_commands.md).
 
-Expected completion message:
-
-```text
-Dataset onboarding review artifacts completed.
-Profile written to: outputs/demo_run/dataset_profile.json
-Context summary written to: outputs/demo_run/onboarding_context_summary.json
-Gap assessment written to: outputs/demo_run/onboarding_gap_assessment.json
-Reviewer questions written to: outputs/demo_run/reviewer_questions.json
-Reviewer answers summary written to: outputs/demo_run/reviewer_answers_summary.json
-Review report written to: outputs/demo_run/onboarding_review_report.md
-Trace written to: outputs/demo_run/onboarding_trace.json
-```
-
-If dataset intake fails, the CLI exits with code `2` and writes a clear intake error to stderr. If context loading fails, the CLI exits with code `3` and writes a clear context loading error to stderr. If optional LLM setup or invocation fails, the CLI exits with code `4` and writes a clear LLM error to stderr. If reviewer answers loading fails, the CLI exits with code `5` and writes a clear reviewer answers error to stderr. A failed run should not be treated as a successful review.
-
-## Onboarding context YAML
-
-Context YAML is optional. When provided, it should contain human-authored information that helps a reviewer understand the dataset. Supported fields are:
-
-- `dataset_name`
-- `dataset_owner`
-- `dataset_purpose`
-- `expected_grain`
-- `known_primary_key`
-- `known_date_fields`
-- `known_measure_fields`
-- `known_category_fields`
-- `fields_to_ignore`
-- `known_downstream_uses`
-- `known_quality_concerns`
-- `refresh_frequency`
-- `source_system`
-- `business_contact`
-- `technical_contact`
-
-List-like fields are normalized to lists of strings. Scalar fields are normalized to strings. Unknown fields do not crash the run; they are captured by field name so a reviewer can correct the YAML without copying unsupported values into artifacts.
-
-Example:
-
-```yaml
-dataset_name: Customer onboarding sample
-dataset_owner: Customer Operations
-dataset_purpose: Supports review of customer onboarding activity for operational follow-up.
-expected_grain: One row per customer onboarding record.
-known_primary_key: customer_id
-known_date_fields:
-  - signup_date
-  - last_contact_date
-known_measure_fields:
-  - monthly_spend
-known_category_fields:
-  - region
-  - account_status
-fields_to_ignore: []
-known_downstream_uses:
-  - Operational onboarding review
-known_quality_concerns:
-  - Some customers may not have a last contact date.
-refresh_frequency: Monthly
-source_system: Synthetic example source
-business_contact: Customer Operations lead
-technical_contact: Data platform contact
-```
-
-## Current artifacts
+## Output artifacts
 
 A successful run writes seven artifacts:
 
@@ -243,146 +150,117 @@ outputs/demo_run/onboarding_review_report.md
 outputs/demo_run/onboarding_trace.json
 ```
 
-### `dataset_profile.json`
+Short orientation:
 
-The dataset profile includes:
+| Artifact | Purpose |
+| --- | --- |
+| `dataset_profile.json` | Safe aggregate dataset profile and column-level evidence. |
+| `onboarding_context_summary.json` | Normalized summary of optional human-authored onboarding context. |
+| `onboarding_gap_assessment.json` | Deterministic context and field-reference gaps for review. |
+| `reviewer_questions.json` | Not-requested status by default, or validated optional LLM reviewer-question candidates. |
+| `reviewer_answers_summary.json` | Summary of optional human-authored reviewer answers against accepted question IDs. |
+| `onboarding_review_report.md` | Deterministic Markdown review material for humans. |
+| `onboarding_trace.json` | Run metadata, stage counts, and artifact paths without full payloads or answer text. |
 
-- profile version
-- safe dataset metadata summary
-- row count and column count
-- one aggregate profile per column
-- missing, non-null, empty-string, and distinct counts/percentages
-- deterministic candidate role hints such as `id_like`, `date_like`, `measure_like`, `category_like`, `text_like`, or `unknown`
-- dataset-level observations from safe metadata and aggregate counts
+See [docs/artifacts.md](docs/artifacts.md) for artifact-by-artifact details.
 
-The profile does not include raw rows, sampled records, first rows, last rows, top values, distinct value lists, example values, or min/max values.
+## Authority boundary
 
-### `onboarding_context_summary.json`
+The workflow must not:
 
-The context summary includes:
+- approve datasets;
+- claim a dataset is trusted, governed, compliant, production-ready, or complete;
+- make legal, compliance, privacy, or production-readiness verdicts;
+- send raw rows to an LLM;
+- write raw rows, sampled records, top values, or distinct value lists into artifacts;
+- execute arbitrary generated code;
+- let LLM output bypass deterministic validation;
+- treat LLM output as authoritative;
+- treat reviewer answers as proof of approval; or
+- imply that reviewer questions, reviewer answers, profiles, gap assessments, reports, or artifacts are complete or sufficient for review.
 
-- whether context was provided
-- the context path when present
-- known supported context fields
-- missing supported context fields
-- unknown YAML fields by field name
-- normalized context values for supported fields
-- referenced field checks against safe profile column names
+The workflow should:
 
-The context summary may include field names because column names are already part of the safe dataset profile. It does not include raw dataset rows.
+- run locally by default;
+- use deterministic evidence first;
+- keep raw data out of prompts and review artifacts;
+- use human-authored context and answers as reviewer-provided input;
+- make any LLM role optional, bounded, and support-only;
+- validate LLM output deterministically;
+- write clear JSON and Markdown artifacts; and
+- keep human review as the final authority.
 
-### `onboarding_gap_assessment.json`
+## Project structure
 
-The gap assessment includes:
+```text
+src/dataset_onboarding_reviewer_workflow/
+  cli.py                       # command-line interface
+  state.py                     # shared workflow state shape
+  graph.py                     # LangGraph wiring
+  nodes.py                     # orchestration nodes
+  intake.py                    # local CSV/XLSX/XLSM intake
+  profiling.py                 # safe aggregate profiling
+  context_loader.py            # optional context YAML loading and summary
+  gap_assessor.py              # deterministic gap assessment
+  question_input_builder.py    # safe input for optional question generation
+  llm_client.py                # isolated optional OpenAI call
+  reviewer_questions.py        # candidate validation and question artifact shape
+  reviewer_answers_loader.py   # optional reviewer answers YAML loading and summary
+  report_builder.py            # deterministic Markdown report
+  output_writers.py            # JSON, Markdown, and trace writers
 
-- assessment version and status
-- a `review_decision_made: false` marker
-- summary counts for context fields, referenced fields, and priorities
-- deterministic gaps phrased as human review prompts
-- field alignment between reviewer-provided context and profile observations
-- review-oriented suggested next steps
-- a note that human review remains required
+docs/
+  architecture.md
+  design_principles.md
+  artifacts.md
+  demo_workflow.md
+  example_commands.md
+  roadmap.md
 
-The gap assessment does not claim the gaps are exhaustive. It does not approve or reject a dataset, make legal/compliance/privacy verdicts, or decide whether a dataset is ready for downstream engineering work.
-
-### `reviewer_questions.json`
-
-The reviewer questions artifact has a stable shape on every successful run. Without `--generate-questions`, it records:
-
-- `mode: not_requested`
-- `llm_used: false`
-- `review_decision_made: false`
-- zero candidate, accepted, and rejected counts
-
-When `--generate-questions` is used, the workflow:
-
-- builds prompt input from the safe profile, context summary, and gap assessment only
-- sends no raw rows, sampled records, top values, distinct value lists, first rows, last rows, or raw value examples
-- requests reviewer-question candidates only, not decisions
-- validates candidate shape, category, priority, references, bounded length, question format, and forbidden language deterministically
-- separates accepted and rejected question candidates
-- records counts for candidate, accepted, and rejected questions
-
-Rejected candidates are recorded for review/debugging, but LLM output is not treated as authoritative. Accepted questions are still candidates only and may be incomplete.
-
-### `reviewer_answers_summary.json`
-
-The reviewer answers summary is written on every successful run. Without `--answers`, it records `answers_provided: false` and zero counts. When answers are provided, it includes normalized human-authored answer records, answer status counts, matched and unmatched question IDs, unanswered accepted question IDs, unknown YAML fields, warnings, and `review_decision_made: false`.
-
-Reviewer answers are not proof that a dataset is approved, trusted, governed, compliant, production-ready, complete, or suitable for downstream use. They are review input only.
-
-### `onboarding_review_report.md`
-
-The Markdown report is a human-review artifact assembled from the profile, context summary, gap assessment, and reviewer-question artifact. It includes:
-
-- review boundary and limitations
-- safe dataset summary metadata
-- one safe aggregate column-profile table
-- onboarding context summary
-- field alignment between context references and profiled columns
-- high/medium/low gap counts
-- deterministic gaps for review
-- reviewer questions section
-- reviewer answers section
-- suggested reviewer next steps
-- artifact index
-
-If reviewer-question generation was not requested, the report says so. If accepted question candidates exist, the report includes them in a concise table. If candidates were rejected, the report includes a rejected count without embedding raw model output.
-
-The report does not include raw rows, sampled records, first rows, last rows, top values, distinct value lists, raw value examples, or min/max values. It is not a review decision. Reviewer answers in the report are human-authored input and do not imply all gaps are closed.
-
-### `onboarding_trace.json`
-
-The onboarding trace includes:
-
-- workflow name and version
-- run ID
-- start and completion timestamps
-- status
-- workflow step sequence
-- artifact paths
-- whether dataset loading, profiling, context loading, gap assessment, question generation, reviewer answer loading, and report building completed
-- whether question generation was requested
-- whether an LLM was used
-- concise dataset metadata summary
-- concise context, gap, reviewer-question, and reviewer-answer counts
-- a note that no review decision was made
-
-The trace does not include the internal dataframe object, duplicate the full dataset profile, duplicate the full context summary, duplicate the full gap assessment, embed the full reviewer-question payload, embed reviewer answer text, include question-generation prompt input, or embed the Markdown report.
-
-## Current limitations
-
-This stage intentionally does not include:
-
-- final decision
-- safe onboarding payload generation
-- approval, trust, compliance, privacy, or production-readiness verdicts
-- generated code execution
-- raw row prompt content
-- real LLM calls in tests or CI
-
-Reviewer-question generation is optional support only. Reviewer answers are human-authored input only. The default workflow remains deterministic and local-first. See `docs/architecture.md` for the deterministic, optional-LLM, and human-review boundaries.
-
-## Tests
-
-Run the test suite:
-
-```bash
-pytest
+examples/
+  customer_onboarding_sample.csv
+  customer_onboarding_context.yaml
+  customer_reviewer_answers.yaml
 ```
 
-The tests cover dataset intake, safe profiling, context loading, deterministic gap assessment, safe question input building, reviewer question validation, optional LLM client boundaries, Markdown report building, graph execution, node state updates, artifact writing, package versioning, and CLI behavior. Tests do not call a real LLM.
+## Run tests
 
-## Roadmap
+Run the normal test suite:
 
-Planned PR sequence:
+```bash
+PYTHONPATH=src pytest -q
+```
 
-1. **Repository scaffold and minimal LangGraph run** — implemented in PR #1.
-2. **Dataset intake and safe profiling nodes** — implemented in PR #2; added CSV/XLSX/XLSM intake, safe aggregate profiling, `dataset_profile.json`, and enriched trace metadata.
-3. **Human-authored onboarding context and gap assessment** — implemented in PR #3; loads optional YAML context, summarizes known context, assesses missing/unclear context deterministically, and writes context/gap artifacts.
-4. **Deterministic onboarding review report** — implemented in PR #4; generates a Markdown onboarding review report from safe structured evidence.
-5. **Optional bounded LLM reviewer question generation** — implemented in PR #5; generates structured reviewer-question candidates from safe evidence only when explicitly requested, validates deterministically, and writes accepted/rejected question artifacts.
-6. **Reviewer answers input** — implemented in PR #6; accepts optional reviewer answers YAML, summarizes matched/unmatched and answered/unanswered questions, and updates the report.
-7. **Documentation, comments, polish, and v1 release prep** — strengthen documentation, architecture notes, artifact docs, demo workflow, comments, and versioning.
+Useful documentation-PR checks:
 
-Each step should keep local execution, deterministic evidence, artifact safety, and human review central.
+```bash
+git diff --check
+python -m compileall src tests
+PYTHONPATH=src pytest -q
+```
+
+Tests do not call a real LLM.
+
+## Limitations and non-goals
+
+This v1 scope intentionally does not include:
+
+- final approval or decision status;
+- compliance, privacy, legal, trust, governance, completeness, or production-readiness verdicts;
+- `safe_onboarding_payload.json`;
+- raw row upload to an LLM;
+- generated code execution;
+- database or cloud data connectors;
+- automatic governance workflows; or
+- automatic documentation publishing.
+
+Reviewer-question generation is optional support only. Reviewer answers are human-authored input only and do not close gaps automatically.
+
+## Further reading
+
+- [Architecture](docs/architecture.md)
+- [Design principles](docs/design_principles.md)
+- [Artifacts](docs/artifacts.md)
+- [Demo workflow](docs/demo_workflow.md)
+- [Example commands](docs/example_commands.md)
+- [Roadmap](docs/roadmap.md)
