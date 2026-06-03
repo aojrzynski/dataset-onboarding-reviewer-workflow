@@ -39,6 +39,8 @@ def test_run_workflow_without_context_returns_completed_state(tmp_path) -> None:
     assert state["output_dir"] == str(tmp_path)
     assert state["context_loaded"] is True
     assert state["gaps_assessed"] is True
+    assert state["report_built"] is True
+    assert state["onboarding_review_report"]
     assert state["context_provided"] is False
 
 
@@ -53,6 +55,8 @@ def test_run_workflow_with_context_returns_completed_state(tmp_path) -> None:
     assert state["status"] == "completed"
     assert state["context_loaded"] is True
     assert state["gaps_assessed"] is True
+    assert state["report_built"] is True
+    assert state["onboarding_review_report"]
     assert state["context_provided"] is True
     assert state["onboarding_context_summary"]["normalized_context"]["dataset_name"] == "Customers"
 
@@ -66,6 +70,7 @@ def test_run_workflow_records_expected_sequence_and_profile_state(tmp_path) -> N
     assert state["workflow_steps"] == EXPECTED_WORKFLOW_STEPS
     assert state["dataset_loaded"] is True
     assert state["profile_built"] is True
+    assert state["report_built"] is True
     assert state["dataset_profile"]["row_count"] == 1
 
 
@@ -81,7 +86,5 @@ def test_run_workflow_does_not_imply_later_review_fields(tmp_path) -> None:
         "reviewer_answers",
         "llm_prompt",
         "safe_onboarding_payload",
-        "markdown_report",
-        "report_path",
     ):
         assert future_field not in state
