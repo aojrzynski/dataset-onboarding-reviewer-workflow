@@ -45,15 +45,3 @@ Possible future improvements include:
 - versioned artifact schemas.
 
 Any future LLM work should keep raw rows out of prompts, keep generated output bounded, and preserve deterministic validation.
-
-## PR history
-
-- PR #1 established the repository scaffold and minimal LangGraph run.
-- PR #2 added local dataset intake, safe aggregate profiling, `dataset_profile.json`, and enriched trace metadata.
-- PR #3 added optional human-authored onboarding context, context summaries, and deterministic gap assessment artifacts.
-- PR #4 added the deterministic Markdown onboarding review report.
-- PR #5 added optional bounded LLM reviewer-question generation from safe evidence only, with deterministic validation and accepted/rejected question artifacts.
-- PR #6 added optional human-authored reviewer answers, answer matching, answer summaries, and report updates.
-- PR #7 organized and expanded the documentation set for the v1 workflow; it did not change runtime behavior.
-
-PR #8 completed guided source comments and docstring polish without changing behavior.
