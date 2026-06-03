@@ -157,12 +157,11 @@ The tests cover package versioning, node state updates, graph execution, JSON tr
 Planned PR sequence:
 
 1. **Repository scaffold and minimal LangGraph run** — implemented here.
-2. **Dataset intake interface** — add a dataset path and safe metadata checks without profiling rows into artifacts.
-3. **Deterministic profiling summary** — add bounded profiling outputs that avoid raw rows, sampled records, top values, and distinct value lists.
-4. **Context loading** — add reviewer-provided dataset context and known constraints.
-5. **Gap assessment** — compare deterministic evidence and context to identify onboarding gaps.
-6. **Review artifacts** — write clear JSON and Markdown artifacts for human review.
-7. **Optional bounded LLM questions** — generate reviewer questions only from safe evidence and validate them deterministically.
-8. **Reviewer-answer handling** — record human-provided answers and keep final authority with the reviewer.
+2. **Dataset intake and safe profiling nodes** — add CSV/XLSX/XLSM intake, build a safe aggregate profile, write `dataset_profile.json` and trace metadata. No context or LLM yet.
+3. **Human-authored onboarding context and gap assessment** — load optional YAML context, summarize known context, assess missing/unclear context deterministically, and write context/gap artifacts.
+4. **Deterministic onboarding review report** — generate a Markdown onboarding review report from profile and gap assessment. No LLM yet.
+5. **Optional bounded LLM reviewer question generation** — generate structured reviewer-question candidates from safe evidence only, validate deterministically, and write accepted/rejected question artifacts.
+6. **Reviewer answers input** — accept optional reviewer answers YAML, summarize answered/unanswered questions, and update the report.
+7. **Documentation, comments, polish, and v1 release prep** — strengthen README/docs, architecture notes, artifact docs, demo workflow, roadmap, comments, and versioning.
 
 Each step should keep local execution, deterministic evidence, and safety boundaries central.
